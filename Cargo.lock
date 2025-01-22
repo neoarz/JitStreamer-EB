@@ -473,6 +473,8 @@ dependencies = [
 [[package]]
 name = "idevice"
 version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cf643bb012231300228397360ba2dbf6e036609d088aac62f09498b21507b9e"
 dependencies = [
  "env_logger",
  "log",

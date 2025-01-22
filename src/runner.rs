@@ -10,7 +10,7 @@ pub fn run(path: &str, count: u32) {
         std::thread::spawn(move || {
             loop {
                 // Run the Python shim
-                let output = std::process::Command::new("python")
+                let output = std::process::Command::new("python3")
                     .arg(&path)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
