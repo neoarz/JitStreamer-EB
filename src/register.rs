@@ -8,21 +8,23 @@ use sqlite::State;
 
 /// Check to make sure the Wireguard interface exists
 pub fn check_wireguard() {
-    let key = wg_config::WgKey::generate_private_key().expect("failed to generate key");
-    let interface = wg_config::WgInterface::new(
-        key,
-        "fd00::/128".parse().unwrap(),
-        Some(51869),
-        None,
-        None,
-        None,
-    )
-    .unwrap();
+    if !std::fs::exists("/etc/wireguard/jitstreamer.conf").unwrap() {
+        let key = wg_config::WgKey::generate_private_key().expect("failed to generate key");
+        let interface = wg_config::WgInterface::new(
+            key,
+            "fd00::/128".parse().unwrap(),
+            Some(51869),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
-    wg_config::WgConf::create("/etc/wireguard/jitstreamer.conf", interface, None)
-        .expect("failed to create config");
+        wg_config::WgConf::create("/etc/wireguard/jitstreamer.conf", interface, None)
+            .expect("failed to create config");
 
-    info!("Created new Wireguard config");
+        info!("Created new Wireguard config");
+    }
 }
 
 /// Takes the plist in bytes, and returns either the pairing file in return or an error message
