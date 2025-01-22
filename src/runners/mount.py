@@ -1,13 +1,10 @@
 # Jackson Coxson + ny
 
 import asyncio
-import logging
 import aiosqlite
 
 from pymobiledevice3.services.mobile_image_mounter import auto_mount_personalized
 from pymobiledevice3.tunneld.api import async_get_tunneld_device_by_udid
-
-logging.basicConfig(level=logging.INFO)
 
 
 async def process_mount_queue():
@@ -31,7 +28,6 @@ async def process_mount_queue():
                 row = await cursor.fetchone()
 
             if not row:
-                logging.info("No pending mounts. Retrying in 1 seconds...")
                 await asyncio.sleep(1)
                 continue
 
@@ -44,7 +40,7 @@ async def process_mount_queue():
             )
             await db.commit()
 
-            logging.info(f"Claimed mount job for UDID: {udid}, Ordinal: {ordinal}")
+            print(f"[INFO] Claimed mount job for UDID: {udid}, Ordinal: {ordinal}")
 
             try:
                 # Get the device
@@ -54,7 +50,7 @@ async def process_mount_queue():
 
                 # Process the mount
                 result = await auto_mount_personalized(device)
-                logging.info(result)
+                print(f"[INFO] {result}")
 
                 # Delete the device from the queue
                 await db.execute(
@@ -62,7 +58,7 @@ async def process_mount_queue():
                     (ordinal,),
                 )
             except Exception as e:
-                logging.error(f"Error mounting device {udid}: {e}")
+                print(f"[ERROR] Error mounting device {udid}: {e}")
 
                 # Update the database with the error
                 await db.execute(
@@ -71,11 +67,11 @@ async def process_mount_queue():
                 )
 
             await db.commit()
-            logging.info(f"Finished processing ordinal {ordinal}")
+            print(f"[INFO] Finished processing ordinal {ordinal}")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(process_mount_queue())
     except KeyboardInterrupt:
-        logging.info("Shutting down gracefully...")
+        print("Shutting down gracefully...")

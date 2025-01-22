@@ -1,7 +1,6 @@
 # Jackson Coxson + ny
 
 import asyncio
-import logging
 import aiosqlite
 import socket
 from pymobiledevice3.services.dvt.instruments.process_control import ProcessControl
@@ -9,8 +8,6 @@ from pymobiledevice3.services.dvt.dvt_secure_socket_proxy import (
     DvtSecureSocketProxyService,
 )
 from pymobiledevice3.tunneld.api import async_get_tunneld_device_by_udid
-
-logging.basicConfig(level=logging.INFO)
 
 
 async def launch_app(udid, bundle_id):
@@ -41,7 +38,7 @@ async def launch_app(udid, bundle_id):
                 raise RuntimeError(
                     f"Error getting debugserver address: {str(e)}, is tunneld running?"
                 )
-            logging.info(f"Connecting to [{host}]:{port}")
+            print(f"[INFO] Connecting to [{host}]:{port}")
 
             with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
                 s.connect(debugserver)
@@ -85,7 +82,6 @@ async def process_launch_queue():
                 row = await cursor.fetchone()
 
             if not row:
-                logging.info("No pending launches. Retrying in 1 second...")
                 await asyncio.sleep(1)
                 continue
 
@@ -98,14 +94,14 @@ async def process_launch_queue():
             )
             await db.commit()
 
-            logging.info(
-                f"Claimed launch job for UDID: {udid}, Bundle ID: {bundle_id}, Ordinal: {ordinal}"
+            print(
+                f"[INFO] Claimed launch job for UDID: {udid}, Bundle ID: {bundle_id}, Ordinal: {ordinal}"
             )
 
             try:
                 # Process the launch
                 result = await launch_app(udid, bundle_id)
-                logging.info(result)
+                print(f"[INFO] {result}")
 
                 # Delete the device from the queue
                 await db.execute(
@@ -113,7 +109,7 @@ async def process_launch_queue():
                     (ordinal,),
                 )
             except Exception as e:
-                logging.error(str(e))
+                print(f"[ERROR] {e}")
 
                 # Update the database with the error
                 await db.execute(
@@ -122,11 +118,11 @@ async def process_launch_queue():
                 )
 
             await db.commit()
-            logging.info(f"Finished processing ordinal {ordinal}")
+            print(f"[INFO] Finished processing ordinal {ordinal}")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(process_launch_queue())
     except KeyboardInterrupt:
-        logging.info("Shutting down gracefully...")
+        print("Shutting down gracefully...")
