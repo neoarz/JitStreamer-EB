@@ -53,6 +53,11 @@ async fn main() {
         .unwrap_or("10".to_string())
         .parse::<u32>()
         .unwrap();
+    let allow_registration = std::env::var("ALLOW_REGISTRATION")
+        .unwrap_or("1".to_string())
+        .parse::<u8>()
+        .unwrap()
+        == 1;
 
     // Run the Python shims
     runner::run("src/runners/mount.py", runner_count);
@@ -102,9 +107,16 @@ async fn main() {
         .layer(cors.clone())
         .route("/hello", get(|| async { "Hello, world!" }))
         .route("/version", post(version))
-        .route("/register", post(register::register))
         .route("/get_apps", get(get_apps))
-        .route("/launch_app/{bundle_id}", get(launch_app))
+        .route("/launch_app/{bundle_id}", get(launch_app));
+
+    let app = if allow_registration {
+        app.route("/register", post(register::register))
+    } else {
+        app
+    };
+
+    let app = app
         .layer(axum_client_ip::SecureClientIpSource::ConnectInfo.into_extension())
         .layer(cors);
 
