@@ -367,29 +367,39 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
             });
         }
     };
+    let apps: Vec<String> = apps
+        .into_iter()
+        .filter(|(_, app)| {
+            // Filter out apps that don't have get-task-allow
+            let app = match app {
+                plist::Value::Dictionary(app) => app,
+                _ => return false,
+            };
+
+            match app.get("Entitlements") {
+                Some(plist::Value::Dictionary(entitlements)) => {
+                    matches!(
+                        entitlements.get("get-task-allow"),
+                        Some(plist::Value::Boolean(true))
+                    )
+                }
+                _ => false,
+            }
+        })
+        .map(|(bundle_id, _)| bundle_id)
+        .collect();
+
+    if apps.is_empty() {
+        return Json(GetAppsReturn {
+            ok: false,
+            apps: Vec::new(),
+            error: Some("No apps with get-task-allow found".to_string()),
+        });
+    }
+
     Json(GetAppsReturn {
         ok: true,
-        apps: apps
-            .into_iter()
-            .filter(|(_, app)| {
-                // Filter out apps that don't have get-task-allow
-                let app = match app {
-                    plist::Value::Dictionary(app) => app,
-                    _ => return false,
-                };
-
-                match app.get("Entitlements") {
-                    Some(plist::Value::Dictionary(entitlements)) => {
-                        matches!(
-                            entitlements.get("get-task-allow"),
-                            Some(plist::Value::Boolean(true))
-                        )
-                    }
-                    _ => false,
-                }
-            })
-            .map(|(bundle_id, _)| bundle_id)
-            .collect(),
+        apps,
         error: None,
     })
 }
