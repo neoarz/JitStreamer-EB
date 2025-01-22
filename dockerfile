@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     wireguard-tools \
+    iproute2 \
     librust-openssl-dev \
     libssl-dev && \
     rm -rf /var/lib/apt/lists/*
@@ -56,12 +57,14 @@ RUN pip3 install -r /app/requirements.txt --break-system-packages
 # Set the default working directory
 WORKDIR /app
 RUN mkdir -p /var/lib/lockdown
+RUN mkdir -p /etc/wireguard
 
 # Expose Wireguard and Jitstreamer ports
 EXPOSE 51869/udp
 EXPOSE 9172/tcp
 
 VOLUME /var/lib/lockdown
+VOLUME /etc/wireguard
 VOLUME /app/jitstreamer.db
 
 # Command to start all required services and run the program
