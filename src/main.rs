@@ -40,9 +40,23 @@ async fn main() {
     env_logger::init();
     info!("Logger initialized");
 
+    // Run the environment checks
+    register::check_wireguard();
+    if !std::fs::exists("jitstreamer.db").unwrap() {
+        info!("Creating database");
+        let db = sqlite::open("jitstreamer.db").unwrap();
+        db.execute(include_str!("sql/up.sql")).unwrap();
+    }
+
+    // Read the environment variable constants
+    let runner_count = std::env::var("RUNNER_COUNT")
+        .unwrap_or("10".to_string())
+        .parse::<u32>()
+        .unwrap();
+
     // Run the Python shims
-    runner::run("src/runners/mount.py", 10);
-    runner::run("src/runners/launch.py", 10);
+    runner::run("src/runners/mount.py", runner_count);
+    runner::run("src/runners/launch.py", runner_count);
 
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])

@@ -6,6 +6,25 @@ use plist::Dictionary;
 use sha2::Digest;
 use sqlite::State;
 
+/// Check to make sure the Wireguard interface exists
+pub fn check_wireguard() {
+    let key = wg_config::WgKey::generate_private_key().expect("failed to generate key");
+    let interface = wg_config::WgInterface::new(
+        key,
+        "fd00::/128".parse().unwrap(),
+        Some(51869),
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    wg_config::WgConf::create("/etc/wireguard/jitstreamer.conf", interface, None)
+        .expect("failed to create config");
+
+    info!("Created new Wireguard config");
+}
+
 /// Takes the plist in bytes, and returns either the pairing file in return or an error message
 pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static str)> {
     let plist = match plist::from_bytes::<Dictionary>(plist_bytes.as_ref()) {
@@ -72,7 +91,7 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
                 let key = wg_config::WgKey::generate_private_key().expect("failed to generate key");
                 let interface = wg_config::WgInterface::new(
                     key,
-                    "fd00::/64".parse().unwrap(),
+                    "fd00::/128".parse().unwrap(),
                     Some(51869),
                     None,
                     None,
