@@ -68,4 +68,4 @@ VOLUME /etc/wireguard
 VOLUME /app/jitstreamer.db
 
 # Command to start all required services and run the program
-CMD ["/bin/bash", "-c", "netmuxd & python3 -m pymobiledevice3 remote tunneld & jitstreamer-eb"]
+CMD ["/bin/bash", "-c", "wg-quick up jitstreamer & netmuxd & python3 -m pymobiledevice3 remote tunneld & jitstreamer-eb"]

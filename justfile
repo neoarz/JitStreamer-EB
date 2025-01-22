@@ -14,6 +14,7 @@ docker-run:
   -v $(pwd)/jitstreamer.db:/app/jitstreamer.db \
   -e RUST_LOG=info \
   --cap-add=NET_ADMIN \
+  --device /dev/net/tun:/dev/net/tun \
   jitstreamer-eb
 docker-shell:
   sudo docker exec -it jitstreamer-eb /bin/bash
