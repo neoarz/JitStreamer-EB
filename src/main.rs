@@ -58,6 +58,10 @@ async fn main() {
         .parse::<u8>()
         .unwrap()
         == 1;
+    let port = std::env::var("JITSTREAMER_PORT")
+        .unwrap_or("9172".to_string())
+        .parse::<u16>()
+        .unwrap();
 
     // Run the Python shims
     runner::run("src/runners/mount.py", runner_count);
@@ -120,7 +124,7 @@ async fn main() {
         .layer(axum_client_ip::SecureClientIpSource::ConnectInfo.into_extension())
         .layer(cors);
 
-    let addr = SocketAddr::new(IpAddr::from_str("::0").unwrap(), 9172);
+    let addr = SocketAddr::new(IpAddr::from_str("::0").unwrap(), port);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(
         listener,
