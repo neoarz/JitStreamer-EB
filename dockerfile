@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /app/target/release/jitstreamer-eb /usr/local/bin/jitstreamer-eb
 COPY --from=builder /app/netmuxd/target/release/netmuxd /usr/local/bin/netmuxd
 COPY --from=builder /app/requirements.txt /app/requirements.txt
-COPY --from=builder /app /app
+COPY --from=builder /app/src/runners /app/src/runners
 
 # Ensure src/runners/*.python files are included
 COPY src/runners /app/src/runners
