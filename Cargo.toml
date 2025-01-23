@@ -19,3 +19,4 @@ sqlite = { version = "0.36" }
 wg-config = { git = "https://github.com/jkcoxson/wg-config" }
 bytes = { version = "1.9" }
 sha2 = { version = "0.10" }
+dotenvy = { version = "0.15" }

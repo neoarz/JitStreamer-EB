@@ -36,6 +36,7 @@ mod runner;
 #[tokio::main]
 async fn main() {
     println!("Starting JitStreamer-EB, enabling logger");
+    dotenvy::dotenv().ok();
 
     env_logger::init();
     info!("Logger initialized");
