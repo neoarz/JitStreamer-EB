@@ -54,7 +54,7 @@ async def launch_app(udid, bundle_id):
                     if any(x in new for x in (b"$T11thread", b"$OK#00", b"+")):
                         return
                     else:
-                        raise Exception(f"Failed to detach process {app}")
+                        print(f"[WARN] Failed to detach process {app}")
                 else:
                     raise Exception(f"Failed to attach process {app}")
     except Exception as e:
