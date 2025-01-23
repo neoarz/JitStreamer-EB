@@ -104,7 +104,20 @@ pub async fn add_to_queue(udid: &str, bundle_id: &str) -> Option<i64> {
         let mut statement = db.prepare(query).unwrap();
         statement.bind((1, udid.as_str())).unwrap();
         statement.bind((2, bundle_id.as_str())).unwrap();
-        statement.next().unwrap();
+
+        let mut tries = 5;
+        while tries > 0 {
+            if let Err(e) = statement.next() {
+                log::warn!("Database is locked: {:?}", e);
+                if tries == 0 {
+                    return None;
+                }
+                tries -= 1;
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            } else {
+                break;
+            }
+        }
 
         // Get the position of the newly added UDID
         let query = "SELECT COUNT(*) FROM launch_queue WHERE ordinal < (SELECT ordinal FROM launch_queue WHERE udid = ?) AND status = 0";
