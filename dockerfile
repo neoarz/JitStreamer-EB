@@ -17,9 +17,6 @@ WORKDIR /app
 # Copy the project files into the container
 COPY . .
 
-# Install Python dependencies for tunneld
-RUN pip3 install -r requirements.txt --break-system-packages
-
 # Build the JitStreamer EB project in release mode
 RUN cargo build --release
 
