@@ -64,6 +64,10 @@ async fn main() {
         .parse::<u16>()
         .unwrap();
 
+    // Empty the queues
+    mount::empty().await;
+    debug_server::empty().await;
+
     // Run the Python shims
     runner::run("src/runners/mount.py", runner_count);
     runner::run("src/runners/launch.py", runner_count);

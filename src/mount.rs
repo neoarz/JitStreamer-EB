@@ -105,3 +105,21 @@ pub async fn add_to_queue(udid: &str) {
     .await
     .unwrap();
 }
+
+pub async fn empty() {
+    tokio::task::spawn_blocking(|| {
+        let db = match sqlite::open("jitstreamer.db") {
+            Ok(db) => db,
+            Err(e) => {
+                log::error!("Failed to open database: {:?}", e);
+                return;
+            }
+        };
+
+        let query = "DELETE FROM mount_queue";
+        let mut statement = db.prepare(query).unwrap();
+        statement.next().unwrap();
+    })
+    .await
+    .unwrap();
+}
