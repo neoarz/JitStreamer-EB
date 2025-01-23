@@ -126,6 +126,7 @@ async fn main() {
         .layer(cors);
 
     let addr = SocketAddr::new(IpAddr::from_str("::0").unwrap(), port);
+    info!("Starting server on {:?}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(
         listener,
