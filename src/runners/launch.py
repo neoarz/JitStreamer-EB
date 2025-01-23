@@ -14,8 +14,13 @@ async def launch_app(udid, bundle_id):
     """
     Launches the app and enables JIT. Returns a success message or raises an error.
     """
-    device = await async_get_tunneld_device_by_udid(udid)
-    if not device:
+    try:
+        device = await asyncio.wait_for(
+            async_get_tunneld_device_by_udid(udid), timeout=10
+        )
+        if not device:
+            raise RuntimeError(f"Device {udid} not found!")
+    except asyncio.TimeoutError:
         raise RuntimeError(f"Device {udid} not found!")
 
     try:
@@ -102,13 +107,21 @@ async def process_launch_queue():
 
             try:
                 # Process the launch
-                result = await launch_app(udid, bundle_id)
+                result = await asyncio.wait_for(launch_app(udid, bundle_id), timeout=60)
                 print(f"[INFO] {result}")
 
                 # Delete the device from the queue
                 await db.execute(
                     "DELETE FROM launch_queue WHERE ordinal = ?",
                     (ordinal,),
+                )
+            except asyncio.TimeoutError:
+                print("[ERROR] Launch timed out")
+
+                # Update the database with the error
+                await db.execute(
+                    "UPDATE launch_queue SET status = 2, error = ? WHERE ordinal = ?",
+                    ("Timeout", ordinal),
                 )
             except Exception as e:
                 print(f"[ERROR] {e}")
