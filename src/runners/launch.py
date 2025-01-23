@@ -69,6 +69,7 @@ async def process_launch_queue():
 
     async with aiosqlite.connect(db_path) as db:
         while True:
+            await db.execute("BEGIN IMMEDIATE")
             # Begin a transaction to claim a pending job
             async with db.execute(
                 """
@@ -82,6 +83,7 @@ async def process_launch_queue():
                 row = await cursor.fetchone()
 
             if not row:
+                await db.commit()
                 await asyncio.sleep(1)
                 continue
 

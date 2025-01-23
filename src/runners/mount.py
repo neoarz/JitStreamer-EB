@@ -15,6 +15,7 @@ async def process_mount_queue():
 
     async with aiosqlite.connect(db_path) as db:
         while True:
+            await db.execute("BEGIN IMMEDIATE")
             # Fetch the next pending job
             async with db.execute(
                 """
@@ -28,6 +29,7 @@ async def process_mount_queue():
                 row = await cursor.fetchone()
 
             if not row:
+                await db.commit()
                 await asyncio.sleep(1)
                 continue
 
