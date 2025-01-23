@@ -47,6 +47,12 @@ sudo python3 -m pymobildevice3 remote tunneld
 ./target/release/jitstreamer-eb
 ```
 
+**OR**
+
+```bash
+just run
+```
+
 5. Start the Wireguard peer
 
 ```bash
@@ -55,6 +61,16 @@ sudo wg-quick up jitstreamer
 
 6. ???
 7. Profit
+
+## Docker
+
+There's a nice dockerfile that contains a Wireguard server and JitStreamer server,
+all packaged and ready to go. It contains everything you need to run the server.
+
+```bash
+just docker-build
+just docker-run
+```
 
 ## License
 
