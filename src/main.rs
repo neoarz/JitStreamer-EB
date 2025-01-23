@@ -32,6 +32,7 @@ mod mount;
 mod raw_packet;
 mod register;
 mod runner;
+mod tunneld;
 
 #[tokio::main]
 async fn main() {
@@ -321,6 +322,15 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
         });
     }
 
+    // Wait for tunneld to connect
+    if !tunneld::wait_for_connection(&udid, 10).await {
+        return Json(GetAppsReturn {
+            ok: false,
+            apps: Vec::new(),
+            error: Some("Tunneld failed to connect to the device within 10 seconds".to_string()),
+        });
+    }
+
     // Connect to the device and get the list of bundle IDs
     let socket = SocketAddr::new(ip, idevice::lockdownd::LOCKDOWND_PORT);
 
@@ -545,6 +555,15 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
             ok: false,
             position: None,
             error: Some("Failed to add device to netmuxd".to_string()),
+        });
+    }
+
+    // Wait for tunneld to connect
+    if !tunneld::wait_for_connection(&udid, 10).await {
+        return Json(LaunchAppReturn {
+            ok: false,
+            position: None,
+            error: Some("Tunneld failed to connect to the device within 10 seconds".to_string()),
         });
     }
 
