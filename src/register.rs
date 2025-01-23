@@ -24,6 +24,13 @@ pub fn check_wireguard() {
             .expect("failed to create config");
 
         info!("Created new Wireguard config");
+
+        // Run wg-quick up jitstreamer
+        let _ = std::process::Command::new("bash")
+            .arg("-c")
+            .arg("wg-quick up jitstreamer")
+            .output()
+            .expect("failed to execute process");
     }
 }
 
