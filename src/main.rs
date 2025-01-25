@@ -18,17 +18,14 @@ use idevice::{
     installation_proxy::InstallationProxyClient, lockdownd::LockdowndClient, mounter::ImageMounter,
     pairing_file::PairingFile, Idevice,
 };
-use log::info;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use sqlite::State;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::UnixStream,
-};
 use tower_http::cors::CorsLayer;
 
 mod debug_server;
 mod mount;
+mod netmuxd;
 mod raw_packet;
 mod register;
 mod runner;
@@ -141,10 +138,6 @@ async fn main() {
     .unwrap();
 }
 
-const NETMUXD_SOCKET: &str = "/var/run/usbmuxd";
-const SERVICE_NAME: &str = "apple-mobdev2";
-const SERVICE_PROTOCOL: &str = "tcp";
-
 #[derive(Serialize, Deserialize)]
 struct VersionRequest {
     version: String,
@@ -232,6 +225,7 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
     };
 
     // Get the pairing file
+    debug!("Getting pairing file for {udid}");
     let pairing_file = match get_pairing_file(udid.clone()).await {
         Ok(pairing_file) => pairing_file,
         Err(e) => {
@@ -245,6 +239,7 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
     };
 
     // Check if there are any launches queued
+    debug!("Checking launch queue for {udid}");
     match debug_server::get_queue_info(&udid).await {
         debug_server::LaunchQueueInfo::Position(p) => {
             return Json(GetAppsReturn {
@@ -273,6 +268,7 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
     }
 
     // Check if there are any mounts queued
+    debug!("Checking mount queue for {udid}");
     match mount::get_queue_info(&udid).await {
         mount::MountQueueInfo::Position(p) => {
             return Json(GetAppsReturn {
@@ -311,7 +307,8 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
 
     // Make sure netmuxd is heartbeat-ing the device
     // Send a plist to add the device to netmuxd
-    if add_device(ip, &udid).await {
+    debug!("Adding device {udid} to netmuxd");
+    if netmuxd::add_device(ip, &udid).await {
         info!("Device {udid} added to netmuxd");
     } else {
         info!("Failed to add device to netmuxd");
@@ -323,6 +320,7 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
     }
 
     // Wait for tunneld to connect
+    debug!("Waiting for tunneld to connect to {udid}");
     if !tunneld::wait_for_connection(&udid, 10).await {
         return Json(GetAppsReturn {
             ok: false,
@@ -332,6 +330,7 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
     }
 
     // Connect to the device and get the list of bundle IDs
+    debug!("Connecting to device {udid} to get apps");
     let socket = SocketAddr::new(ip, idevice::lockdownd::LOCKDOWND_PORT);
 
     let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
@@ -428,6 +427,8 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
             error: Some("No apps with get-task-allow found".to_string()),
         });
     }
+
+    netmuxd::remove_device(&udid).await;
 
     Json(GetAppsReturn {
         ok: true,
@@ -547,7 +548,7 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
 
     // Make sure netmuxd is heartbeat-ing the device
     // Send a plist to add the device to netmuxd
-    if add_device(ip, &udid).await {
+    if netmuxd::add_device(ip, &udid).await {
         info!("Device {udid} added to netmuxd");
     } else {
         info!("Failed to add device to netmuxd");
@@ -671,6 +672,8 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
         });
     }
 
+    netmuxd::remove_device(&udid).await;
+
     // Add the launch to the queue
     match debug_server::add_to_queue(&udid, &bundle_id).await {
         Some(position) => Json(LaunchAppReturn {
@@ -683,48 +686,6 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
             position: None,
             error: Some("Failed to add to queue".to_string()),
         }),
-    }
-}
-
-/// Connects to the unix socket and adds the device
-async fn add_device(ip: IpAddr, udid: &str) -> bool {
-    let mut stream = UnixStream::connect(NETMUXD_SOCKET)
-        .await
-        .expect("Could not connect to netmuxd socket, is it running?");
-
-    let mut request = plist::Dictionary::new();
-    request.insert("MessageType".into(), "AddDevice".into());
-    request.insert("ConnectionType".into(), "Network".into());
-    request.insert(
-        "ServiceName".into(),
-        format!("_{}._{}.local", SERVICE_NAME, SERVICE_PROTOCOL).into(),
-    );
-    request.insert("IPAddress".into(), ip.to_string().into());
-    request.insert("DeviceID".into(), udid.into());
-
-    let request = raw_packet::RawPacket::new(request, 69, 69, 69);
-    let request: Vec<u8> = request.into();
-
-    stream.write_all(&request).await.unwrap();
-
-    let mut buf = Vec::new();
-    let size = stream.read_to_end(&mut buf).await.unwrap();
-
-    let buffer = &mut buf[0..size].to_vec();
-    if size == 16 {
-        let packet_size = &buffer[0..4];
-        let packet_size = u32::from_le_bytes(packet_size.try_into().unwrap());
-        // Pull the rest of the packet
-        let mut packet = vec![0; packet_size as usize];
-        let _ = stream.read(&mut packet).await.unwrap();
-        // Append the packet to the buffer
-        buffer.append(&mut packet);
-    }
-
-    let parsed: raw_packet::RawPacket = buffer.try_into().unwrap();
-    match parsed.plist.get("Result") {
-        Some(plist::Value::Integer(r)) => r.as_unsigned().unwrap() == 1,
-        _ => false,
     }
 }
 
