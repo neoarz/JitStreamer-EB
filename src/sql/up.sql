@@ -6,6 +6,7 @@ create table devices (
 
 create table mount_queue (
   udid varchar(40) not null,
+  ip varchar(32) not null,
   status int not null, -- 0: pending, 2: error
   error varchar(255),
   ordinal integer primary key
@@ -18,6 +19,7 @@ create table downloads (
 
 create table launch_queue (
   udid varchar(40) not null,
+  ip varchar(32) not null,
   bundle_id varchar(255) not null,
   status int not null, -- 0: pending, 2: error
   error varchar(255),

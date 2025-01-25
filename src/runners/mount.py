@@ -3,6 +3,8 @@
 import asyncio
 import aiosqlite
 
+import netmuxd
+
 from pymobiledevice3.services.mobile_image_mounter import auto_mount_personalized
 from pymobiledevice3.tunneld.api import async_get_tunneld_device_by_udid
 
@@ -19,7 +21,7 @@ async def process_mount_queue():
             # Fetch the next pending job
             async with db.execute(
                 """
-                SELECT udid, ordinal
+                SELECT udid, ip, ordinal
                 FROM mount_queue
                 WHERE status = 0
                 ORDER BY ordinal ASC
@@ -33,7 +35,7 @@ async def process_mount_queue():
                 await asyncio.sleep(1)
                 continue
 
-            udid, ordinal = row
+            udid, ip, ordinal = row
 
             # Claim the job by setting status to 1
             await db.execute(
@@ -45,6 +47,8 @@ async def process_mount_queue():
             print(f"[INFO] Claimed mount job for UDID: {udid}, Ordinal: {ordinal}")
 
             try:
+                if not await netmuxd.add_device(ip, udid):
+                    raise Exception(f"Failed to add device to netmuxd {udid}")
                 # Get the device
                 try:
                     device = await asyncio.wait_for(
@@ -74,6 +78,7 @@ async def process_mount_queue():
                 )
 
             await db.commit()
+            await netmuxd.remove_device(udid)
             print(f"[INFO] Finished processing ordinal {ordinal}")
 
 

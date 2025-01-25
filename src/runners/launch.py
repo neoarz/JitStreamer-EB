@@ -3,6 +3,9 @@
 import asyncio
 import aiosqlite
 import socket
+
+import netmuxd
+
 from pymobiledevice3.services.dvt.instruments.process_control import ProcessControl
 from pymobiledevice3.services.dvt.dvt_secure_socket_proxy import (
     DvtSecureSocketProxyService,
@@ -10,10 +13,14 @@ from pymobiledevice3.services.dvt.dvt_secure_socket_proxy import (
 from pymobiledevice3.tunneld.api import async_get_tunneld_device_by_udid
 
 
-async def launch_app(udid, bundle_id):
+async def launch_app(udid, ip, bundle_id):
     """
     Launches the app and enables JIT. Returns a success message or raises an error.
     """
+
+    if not await netmuxd.add_device(ip, udid):
+        raise RuntimeError(f"Failed to add device {udid} to netmuxd")
+
     try:
         device = await asyncio.wait_for(
             async_get_tunneld_device_by_udid(udid), timeout=10
@@ -78,7 +85,7 @@ async def process_launch_queue():
             # Begin a transaction to claim a pending job
             async with db.execute(
                 """
-                SELECT udid, bundle_id, ordinal
+                SELECT udid, ip, bundle_id, ordinal
                 FROM launch_queue
                 WHERE status = 0
                 ORDER BY ordinal ASC
@@ -92,7 +99,7 @@ async def process_launch_queue():
                 await asyncio.sleep(1)
                 continue
 
-            udid, bundle_id, ordinal = row
+            udid, ip, bundle_id, ordinal = row
 
             # Lock the job by setting the status to 1 (in progress)
             await db.execute(
@@ -107,7 +114,9 @@ async def process_launch_queue():
 
             try:
                 # Process the launch
-                result = await asyncio.wait_for(launch_app(udid, bundle_id), timeout=60)
+                result = await asyncio.wait_for(
+                    launch_app(udid, ip, bundle_id), timeout=60
+                )
                 print(f"[INFO] {result}")
 
                 # Delete the device from the queue
@@ -134,6 +143,10 @@ async def process_launch_queue():
 
             await db.commit()
             print(f"[INFO] Finished processing ordinal {ordinal}")
+
+            # Remove the UDID from netmuxd
+            # Connect to the unix socket and send the UDID to remove
+            await netmuxd.remove_device(udid)
 
 
 if __name__ == "__main__":

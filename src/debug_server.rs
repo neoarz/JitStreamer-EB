@@ -88,7 +88,7 @@ pub async fn get_queue_info(udid: &str) -> LaunchQueueInfo {
     .unwrap()
 }
 
-pub async fn add_to_queue(udid: &str, bundle_id: &str) -> Option<i64> {
+pub async fn add_to_queue(udid: &str, ip: String, bundle_id: &str) -> Option<i64> {
     let udid = udid.to_string();
     let bundle_id = bundle_id.to_string();
     tokio::task::spawn_blocking(move || {
@@ -100,10 +100,12 @@ pub async fn add_to_queue(udid: &str, bundle_id: &str) -> Option<i64> {
             }
         };
 
-        let query = "INSERT INTO launch_queue (udid, bundle_id, status) VALUES (?, ?, 0)";
+        let query = "INSERT INTO launch_queue (udid, ip, bundle_id, status) VALUES (?, ?, ?, 0)";
         let mut statement = db.prepare(query).unwrap();
         statement.bind((1, udid.as_str())).unwrap();
-        statement.bind((2, bundle_id.as_str())).unwrap();
+        statement.bind((2, ip.as_str())).unwrap();
+        statement.bind((3, bundle_id.as_str())).unwrap();
+
 
         let mut tries = 5;
         while tries > 0 {

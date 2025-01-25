@@ -86,7 +86,7 @@ pub async fn get_queue_info(udid: &str) -> MountQueueInfo {
     .unwrap()
 }
 
-pub async fn add_to_queue(udid: &str) {
+pub async fn add_to_queue(udid: &str, ip: String) {
     let udid = udid.to_string();
     tokio::task::spawn_blocking(move || {
         let db = match sqlite::open("jitstreamer.db") {
@@ -97,9 +97,11 @@ pub async fn add_to_queue(udid: &str) {
             }
         };
 
-        let query = "INSERT INTO mount_queue (udid, status) VALUES (?, 0)";
+        let query = "INSERT INTO mount_queue (udid, ip, status) VALUES (?, ?, 0)";
         let mut statement = db.prepare(query).unwrap();
-        statement.bind((1, udid.as_str())).unwrap();
+        statement
+            .bind(&[(1, udid.as_str()), (2, ip.as_str())][..])
+            .unwrap();
         statement.next().unwrap();
     })
     .await

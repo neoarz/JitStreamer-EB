@@ -428,8 +428,6 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
         });
     }
 
-    netmuxd::remove_device(&udid).await;
-
     Json(GetAppsReturn {
         ok: true,
         apps,
@@ -662,7 +660,7 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
 
     if !mounted {
         // Add the device to the queue for mounting
-        mount::add_to_queue(&udid).await;
+        mount::add_to_queue(&udid, ip.to_string()).await;
 
         // Return a message letting the user know the device is mounting
         return Json(LaunchAppReturn {
@@ -672,10 +670,8 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
         });
     }
 
-    netmuxd::remove_device(&udid).await;
-
     // Add the launch to the queue
-    match debug_server::add_to_queue(&udid, &bundle_id).await {
+    match debug_server::add_to_queue(&udid, ip.to_string(), &bundle_id).await {
         Some(position) => Json(LaunchAppReturn {
             ok: true,
             position: Some(position as usize),

@@ -56,7 +56,7 @@ pub async fn add_device(ip: IpAddr, udid: &str) -> bool {
     }
 }
 
-pub async fn remove_device(udid: &str) {
+pub async fn _remove_device(udid: &str) {
     let mut stream = UnixStream::connect(NETMUXD_SOCKET)
         .await
         .expect("Could not connect to netmuxd socket, is it running?");
