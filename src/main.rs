@@ -9,27 +9,26 @@ use std::{
 };
 
 use axum::{
-    extract::{Json, Path},
+    extract::{Json, Path, State},
     http::{header::CONTENT_TYPE, Method},
     routing::{get, post},
 };
 use axum_client_ip::SecureClientIp;
+use heartbeat::NewHeartbeatSender;
 use idevice::{
     installation_proxy::InstallationProxyClient, lockdownd::LockdowndClient, mounter::ImageMounter,
     pairing_file::PairingFile, Idevice,
 };
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
-use sqlite::State;
 use tower_http::cors::CorsLayer;
 
 mod debug_server;
+mod heartbeat;
 mod mount;
-mod netmuxd;
 mod raw_packet;
 mod register;
 mod runner;
-mod tunneld;
 
 #[tokio::main]
 async fn main() {
@@ -65,6 +64,9 @@ async fn main() {
     // Empty the queues
     mount::empty().await;
     debug_server::empty().await;
+
+    // Create a heartbeat manager
+    let heartbeat_sender = heartbeat::heartbeat();
 
     // Run the Python shims
     runner::run("src/runners/mount.py", runner_count);
@@ -115,7 +117,8 @@ async fn main() {
         .route("/hello", get(|| async { "Hello, world!" }))
         .route("/version", post(version))
         .route("/get_apps", get(get_apps))
-        .route("/launch_app/{bundle_id}", get(launch_app));
+        .route("/launch_app/{bundle_id}", get(launch_app))
+        .with_state(heartbeat_sender);
 
     let app = if allow_registration {
         app.route("/register", post(register::register))
@@ -179,7 +182,10 @@ struct GetAppsReturn {
 ///  - Send the udid/IP to netmuxd for heartbeat-ing
 ///  - Connect to the device and get the list of bundle IDs
 #[axum::debug_handler]
-async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
+async fn get_apps(
+    ip: SecureClientIp,
+    State(state): State<NewHeartbeatSender>,
+) -> Json<GetAppsReturn> {
     let ip = ip.0;
 
     info!("Got request to get apps from {:?}", ip);
@@ -201,7 +207,7 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
         let query = "SELECT udid FROM devices WHERE ip = ?";
         let mut statement = db.prepare(query).unwrap();
         statement.bind((1, ip.to_string().as_str())).unwrap();
-        let udid = if let Ok(State::Row) = statement.next() {
+        let udid = if let Ok(sqlite::State::Row) = statement.next() {
             let udid = statement.read::<String, _>("udid").unwrap();
             info!("Found device with udid {}", udid);
             udid
@@ -305,28 +311,22 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
         }
     }
 
-    // Make sure netmuxd is heartbeat-ing the device
-    // Send a plist to add the device to netmuxd
-    debug!("Adding device {udid} to netmuxd");
-    if netmuxd::add_device(ip, &udid).await {
-        info!("Device {udid} added to netmuxd");
-    } else {
-        info!("Failed to add device to netmuxd");
-        return Json(GetAppsReturn {
-            ok: false,
-            apps: Vec::new(),
-            error: Some("Failed to add device to netmuxd".to_string()),
-        });
-    }
-
-    // Wait for tunneld to connect
-    debug!("Waiting for tunneld to connect to {udid}");
-    if !tunneld::wait_for_connection(&udid, 10).await {
-        return Json(GetAppsReturn {
-            ok: false,
-            apps: Vec::new(),
-            error: Some("Tunneld failed to connect to the device within 10 seconds".to_string()),
-        });
+    // Heartbeat the device
+    match heartbeat::heartbeat_thread(udid.clone(), ip, &pairing_file).await {
+        Ok(s) => {
+            state
+                .send(heartbeat::SendRequest::Store((udid.clone(), s)))
+                .await
+                .unwrap();
+        }
+        Err(e) => {
+            info!("Failed to heartbeat device: {:?}", e);
+            return Json(GetAppsReturn {
+                ok: false,
+                apps: Vec::new(),
+                error: Some("Failed to heartbeat device".to_string()),
+            });
+        }
     }
 
     // Connect to the device and get the list of bundle IDs
@@ -428,6 +428,11 @@ async fn get_apps(ip: SecureClientIp) -> Json<GetAppsReturn> {
         });
     }
 
+    state
+        .send(heartbeat::SendRequest::Kill(udid.clone()))
+        .await
+        .unwrap();
+
     Json(GetAppsReturn {
         ok: true,
         apps,
@@ -449,7 +454,11 @@ struct LaunchAppReturn {
 ///  - Connect to tunneld and get the interface and port for the developer service
 ///  - Send the commands to launch the app and detach
 ///  - Set last_used to now in the database
-async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<LaunchAppReturn> {
+async fn launch_app(
+    ip: SecureClientIp,
+    Path(bundle_id): Path<String>,
+    State(state): State<heartbeat::NewHeartbeatSender>,
+) -> Json<LaunchAppReturn> {
     let ip = ip.0;
 
     info!("Got request to launch {bundle_id} from {:?}", ip);
@@ -471,7 +480,7 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
         let query = "SELECT udid FROM devices WHERE ip = ?";
         let mut statement = db.prepare(query).unwrap();
         statement.bind((1, ip.to_string().as_str())).unwrap();
-        let udid = if let Ok(State::Row) = statement.next() {
+        let udid = if let Ok(sqlite::State::Row) = statement.next() {
             let udid = statement.read::<String, _>("udid").unwrap();
             info!("Found device with udid {}", udid);
             udid
@@ -544,26 +553,22 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
         }
     };
 
-    // Make sure netmuxd is heartbeat-ing the device
-    // Send a plist to add the device to netmuxd
-    if netmuxd::add_device(ip, &udid).await {
-        info!("Device {udid} added to netmuxd");
-    } else {
-        info!("Failed to add device to netmuxd");
-        return Json(LaunchAppReturn {
-            ok: false,
-            position: None,
-            error: Some("Failed to add device to netmuxd".to_string()),
-        });
-    }
-
-    // Wait for tunneld to connect
-    if !tunneld::wait_for_connection(&udid, 10).await {
-        return Json(LaunchAppReturn {
-            ok: false,
-            position: None,
-            error: Some("Tunneld failed to connect to the device within 10 seconds".to_string()),
-        });
+    // Heartbeat the device
+    match heartbeat::heartbeat_thread(udid.clone(), ip, &pairing_file).await {
+        Ok(s) => {
+            state
+                .send(heartbeat::SendRequest::Store((udid.clone(), s)))
+                .await
+                .unwrap();
+        }
+        Err(e) => {
+            info!("Failed to heartbeat device: {:?}", e);
+            return Json(LaunchAppReturn {
+                ok: false,
+                position: None,
+                error: Some("Failed to heartbeat device".to_string()),
+            });
+        }
     }
 
     // Get the list of mounted images
@@ -669,6 +674,11 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
             error: Some("Your device has been added to the queue for image mounting. Please try again in a minute.".to_string()),
         });
     }
+
+    state
+        .send(heartbeat::SendRequest::Kill(udid.clone()))
+        .await
+        .unwrap();
 
     // Add the launch to the queue
     match debug_server::add_to_queue(&udid, ip.to_string(), &bundle_id).await {

@@ -49,6 +49,9 @@ async def process_mount_queue():
             try:
                 if not await netmuxd.add_device(ip, udid):
                     raise Exception(f"Failed to add device to netmuxd {udid}")
+
+                await asyncio.sleep(3)
+
                 # Get the device
                 try:
                     device = await asyncio.wait_for(
@@ -79,6 +82,7 @@ async def process_mount_queue():
 
             await db.commit()
             await netmuxd.remove_device(udid)
+            await netmuxd.cancel_tunneld(udid)
             print(f"[INFO] Finished processing ordinal {ordinal}")
 
 

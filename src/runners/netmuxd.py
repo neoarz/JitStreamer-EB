@@ -1,6 +1,7 @@
 import plistlib
 import struct
 import asyncio
+import requests
 
 NETMUXD_SOCKET = "/var/run/usbmuxd"
 SERVICE_NAME = "apple-mobdev2"
@@ -116,3 +117,27 @@ async def add_device(ip, udid):
     finally:
         writer.close()
         await writer.wait_closed()
+
+
+async def cancel_tunneld(udid):
+    # Send a GET request to http://localhost:49151/cancel?udid={udid}
+    response = requests.get(f"http://localhost:49151/cancel?udid={udid}")
+    if response.status_code == 200:
+        print(f"Successfully canceled tunneld for UDID: {udid}")
+    else:
+        print(
+            f"Failed to cancel tunneld for UDID: {udid}, Status Code: {response.status_code}"
+        )
+
+
+async def start_tunneld(udid) -> bool:
+    # Send a GET request to http://localhost:49151/start-tunnel?udid={udid}
+    response = requests.get(f"http://localhost:49151/start-tunnel?udid={udid}")
+    if response.status_code == 200:
+        print(f"Successfully started tunneld for UDID: {udid}")
+        return True
+    else:
+        print(
+            f"Failed to start tunneld for UDID: {udid}, Status Code: {response.status_code}"
+        )
+        return False
