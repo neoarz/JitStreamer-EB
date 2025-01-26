@@ -1,7 +1,7 @@
 // Jackson Coxson
 // JitStreamer for the year of our Lord, 2025
 
-const VERSION: [u8; 3] = [0, 0, 1];
+const VERSION: [u8; 3] = [0, 0, 2];
 
 use std::{
     net::{IpAddr, SocketAddr},
