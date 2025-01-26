@@ -38,7 +38,7 @@ pip install -r requirements.txt
 3. Start tunneld
 
 ```bash
-sudo python3 -m pymobildevice3 remote tunneld
+sudo python3 -m pymobiledevice3 remote tunneld
 ```
 
 4. Run the program
