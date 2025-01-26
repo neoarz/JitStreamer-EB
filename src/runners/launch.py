@@ -22,15 +22,22 @@ async def launch_app(udid, ip, bundle_id):
         raise RuntimeError(f"Failed to add device {udid} to netmuxd")
 
     # Sleep for a short period to allow the device to be added
-    await asyncio.sleep(3)
+    await asyncio.sleep(2)
 
-    try:
-        device = await asyncio.wait_for(
-            async_get_tunneld_device_by_udid(udid), timeout=10
-        )
-        if not device:
-            raise RuntimeError(f"Device {udid} not found!")
-    except asyncio.TimeoutError:
+    device = None
+    for _ in range(15):
+        try:
+            d = await asyncio.wait_for(
+                async_get_tunneld_device_by_udid(udid), timeout=10
+            )
+            if d:
+                device = d
+                break
+            await asyncio.sleep(1)
+        except asyncio.TimeoutError:
+            await asyncio.sleep(1)
+
+    if not device:
         raise RuntimeError(f"Device {udid} not found!")
 
     try:

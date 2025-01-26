@@ -53,14 +53,21 @@ async def process_mount_queue():
                 await asyncio.sleep(3)
 
                 # Get the device
-                try:
-                    device = await asyncio.wait_for(
-                        async_get_tunneld_device_by_udid(udid), timeout=10
-                    )
-                except asyncio.TimeoutError:
-                    raise Exception(f"Device {udid} not found")
+                device = None
+                for _ in range(15):
+                    try:
+                        d = await asyncio.wait_for(
+                            async_get_tunneld_device_by_udid(udid), timeout=10
+                        )
+                        if d:
+                            device = d
+                            break
+                        await asyncio.sleep(1)
+                    except asyncio.TimeoutError:
+                        await asyncio.sleep(1)
+
                 if not device:
-                    raise Exception(f"Device {udid} not found")
+                    raise RuntimeError(f"Device {udid} not found!")
 
                 # Process the mount
                 result = await auto_mount_personalized(device)
