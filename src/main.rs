@@ -198,7 +198,7 @@ async fn get_apps(
                 return Err(Json(GetAppsReturn {
                     ok: false,
                     apps: Vec::new(),
-                    error: Some("Failed to open database".to_string()),
+                    error: Some(format!("Failed to open database: {:?}", e)),
                 }));
             }
         };
@@ -216,7 +216,7 @@ async fn get_apps(
             return Err(Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
-                error: Some("No device found".to_string()),
+                error: Some(format!("No device found for IP {:?}", ip)),
             }));
         };
         Ok(udid)
@@ -239,7 +239,7 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
-                error: Some("Failed to get pairing file".to_string()),
+                error: Some(format!("Failed to get pairing file: {:?}", e)),
             });
         }
     };
@@ -324,7 +324,7 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
-                error: Some("Failed to heartbeat device".to_string()),
+                error: Some(format!("Failed to heartbeat device: {:?}", e)),
             });
         }
     }
@@ -343,7 +343,7 @@ async fn get_apps(
         return Json(GetAppsReturn {
             ok: false,
             apps: Vec::new(),
-            error: Some("Failed to start session".to_string()),
+            error: Some(format!("Failed to start session: {:?}", e)),
         });
     }
 
@@ -357,7 +357,7 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
-                error: Some("Failed to start service".to_string()),
+                error: Some(format!("Failed to start service: {:?}", e)),
             });
         }
     };
@@ -370,7 +370,7 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
-                error: Some("Failed to connect to installation_proxy".to_string()),
+                error: Some(format!("Failed to connect to installation_proxy: {:?}", e)),
             });
         }
     };
@@ -382,7 +382,7 @@ async fn get_apps(
         return Json(GetAppsReturn {
             ok: false,
             apps: Vec::new(),
-            error: Some("Failed to start session".to_string()),
+            error: Some(format!("Failed to start session: {:?}", e)),
         });
     }
 
@@ -394,7 +394,7 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
-                error: Some("Failed to get apps".to_string()),
+                error: Some(format!("Failed to get apps: {:?}", e)),
             });
         }
     };
@@ -471,7 +471,7 @@ async fn launch_app(
                 return Err(Json(LaunchAppReturn {
                     ok: false,
                     position: None,
-                    error: Some("Failed to open database".to_string()),
+                    error: Some(format!("Failed to open database: {:?}", e)),
                 }));
             }
         };
@@ -548,7 +548,7 @@ async fn launch_app(
             return Json(LaunchAppReturn {
                 ok: false,
                 position: None,
-                error: Some("Failed to get pairing file".to_string()),
+                error: Some(format!("Failed to get pairing file: {:?}", e)),
             });
         }
     };
@@ -566,7 +566,7 @@ async fn launch_app(
             return Json(LaunchAppReturn {
                 ok: false,
                 position: None,
-                error: Some("Failed to heartbeat device".to_string()),
+                error: Some(format!("Failed to heartbeat device: {:?}", e)),
             });
         }
     }
@@ -580,7 +580,7 @@ async fn launch_app(
             return Json(LaunchAppReturn {
                 ok: false,
                 position: None,
-                error: Some("Failed to connect to lockdownd".to_string()),
+                error: Some(format!("Failed to connect to lockdownd: {:?}", e)),
             });
         }
     };
@@ -594,7 +594,7 @@ async fn launch_app(
         return Json(LaunchAppReturn {
             ok: false,
             position: None,
-            error: Some("Failed to start session".to_string()),
+            error: Some(format!("Failed to start session: {:?}", e)),
         });
     }
 
@@ -608,7 +608,7 @@ async fn launch_app(
             return Json(LaunchAppReturn {
                 ok: false,
                 position: None,
-                error: Some("Failed to start service".to_string()),
+                error: Some(format!("Failed to start service: {:?}", e)),
             });
         }
     };
@@ -621,7 +621,7 @@ async fn launch_app(
             return Json(LaunchAppReturn {
                 ok: false,
                 position: None,
-                error: Some("Failed to connect to image_mounter".to_string()),
+                error: Some(format!("Failed to connect to image_mounter: {:?}", e)),
             });
         }
     };
@@ -633,7 +633,7 @@ async fn launch_app(
         return Json(LaunchAppReturn {
             ok: false,
             position: None,
-            error: Some("Failed to start session".to_string()),
+            error: Some(format!("Failed to start session: {:?}", e)),
         });
     }
 
@@ -645,7 +645,7 @@ async fn launch_app(
             return Json(LaunchAppReturn {
                 ok: false,
                 position: None,
-                error: Some("Failed to get images".to_string()),
+                error: Some(format!("Failed to get images: {:?}", e)),
             });
         }
     };
