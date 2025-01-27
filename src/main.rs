@@ -26,7 +26,6 @@ use tower_http::cors::CorsLayer;
 mod debug_server;
 mod heartbeat;
 mod mount;
-mod raw_packet;
 mod register;
 mod runner;
 
@@ -76,40 +75,6 @@ async fn main() {
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_origin(tower_http::cors::Any)
         .allow_headers([CONTENT_TYPE]);
-
-    // Endpoints (ideas)
-    // / get_apps - Gets the list of apps with get-task-allow on the device
-    //  - Get the IP from the request and UDID from the database
-    //  - Send the udid/IP to netmuxd for heartbeat-ing
-    //  - Connect to the device and get the list of bundle IDs
-    // / launch_app/<bundle ID> - Launches an app on the device
-    //  - Get the IP from the request and UDID from the database
-    //  - Make sure netmuxd still has the device
-    //  - Check the mounted images for the developer disk image
-    //    - If not mounted, add the device to the queue for mounting
-    //    - Return a message letting the user know the device is mounting
-    //  - Connect to tunneld and get the interface and port for the developer service
-    //  - Send the commands to launch the app and detach
-    //  - Set last_used to now in the database
-    // / register - Registers a device with the server, trade UDID for Wireguard config
-    //  - Get the UDID from the plist
-    //  - Generate a Wireguard config for the device
-    //  - Add the device to the database
-    //  - Create a temporary download link for the Wireguard config, add to database
-    //  - Return the temporary link to the Wireguard config
-    // / mount_queue - Gets position in the mounting queue
-    //  - Get the IP from the request and UDID from the database
-    //  - Check the queue for the device
-    // / mount - Mounts the developer disk image on the device
-    //  - Get the IP from the request and UDID from the database
-    //  - Make sure netmuxd still has the device
-    //  - Add the device to the queue for mounting
-    // / change_pairing - Changes the pairing record for the device
-    //  - Get the IP from the request and UDID from the database
-    //  - Upload the new pairing record from the POST body
-    //  - Add the device to netmuxd to make sure it works
-    // / get_config/<code>/JitStreamer.conf - Gets the Wireguard config for the device
-    //  - Look up the temporary link in the database
 
     // Start with Axum
     let app = axum::Router::new()
