@@ -35,11 +35,7 @@ It's not that deep.
 pip install -r requirements.txt
 ```
 
-3. Start tunneld
-
-```bash
-sudo python3 -m pymobiledevice3 remote tunneld
-```
+3. Start [tunneld-rs](https://github.com/jkcoxson/tunneld-rs)
 
 4. Run the program
 
