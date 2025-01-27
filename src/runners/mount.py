@@ -89,7 +89,6 @@ async def process_mount_queue():
 
             await db.commit()
             await netmuxd.remove_device(udid)
-            await netmuxd.cancel_tunneld(udid)
             print(f"[INFO] Finished processing ordinal {ordinal}")
 
 

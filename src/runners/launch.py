@@ -157,7 +157,6 @@ async def process_launch_queue():
             # Remove the UDID from netmuxd
             # Connect to the unix socket and send the UDID to remove
             await netmuxd.remove_device(udid)
-            await netmuxd.cancel_tunneld(udid)
 
 
 if __name__ == "__main__":
