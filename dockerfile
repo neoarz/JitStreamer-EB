@@ -24,7 +24,15 @@ RUN cargo build --release
 RUN git clone https://github.com/jkcoxson/netmuxd.git && \
     cd netmuxd && \
     git reset --hard 1a900f71863a7279cf032b0860554a531f805ef3 && \
-    cargo build --release
+    cargo build --release && \
+    cd ..
+
+RUN git clone https://github.com/jkcoxson/tunneld-rs.git && \
+    cd tunneld-rs && \
+    git reset --hard 4f4ae1fd0ce4f5d7976761822d7763a0f266e3ec && \
+    cargo build --release && \
+    cd ..
+
 
 # Prepare the final runtime image
 FROM debian:bookworm-slim
@@ -42,6 +50,7 @@ RUN apt-get update && apt-get install -y \
 # Copy the built binary and necessary files from the builder stage
 COPY --from=builder /app/target/release/jitstreamer-eb /usr/local/bin/jitstreamer-eb
 COPY --from=builder /app/netmuxd/target/release/netmuxd /usr/local/bin/netmuxd
+COPY --from=builder /app/tunneld-rs/target/release/tunneld-rs /usr/local/bin/tunneld-rs
 COPY --from=builder /app/requirements.txt /app/requirements.txt
 COPY --from=builder /app/src/runners /app/src/runners
 
@@ -66,4 +75,4 @@ VOLUME /etc/wireguard
 VOLUME /app/jitstreamer.db
 
 # Command to start all required services and run the program
-CMD ["/bin/bash", "-c", "wg-quick up jitstreamer & netmuxd & python3 -m pymobiledevice3 remote tunneld & jitstreamer-eb"]
+CMD ["/bin/bash", "-c", "wg-quick up jitstreamer & netmuxd & tunneld-rs & jitstreamer-eb"]
