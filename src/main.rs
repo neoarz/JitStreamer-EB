@@ -24,6 +24,7 @@ use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use tower_http::cors::CorsLayer;
 
+mod db;
 mod debug_server;
 mod heartbeat;
 mod mount;
@@ -174,7 +175,18 @@ async fn get_apps(
 
         // Get the device from the database
         let query = "SELECT udid FROM devices WHERE ip = ?";
-        let mut statement = db.prepare(query).unwrap();
+        let mut statement = match crate::db::db_prepare(&db, query) {
+            Some(s) => s,
+            None => {
+                log::error!("Failed to prepare query!");
+                return Err(Json(GetAppsReturn {
+                    ok: false,
+                    apps: Vec::new(),
+                    bundle_ids: None,
+                    error: Some("Failed to open database".to_string()),
+                }));
+            }
+        };
         statement.bind((1, ip.to_string().as_str())).unwrap();
         let udid = if let Ok(sqlite::State::Row) = statement.next() {
             let udid = statement.read::<String, _>("udid").unwrap();
@@ -403,7 +415,19 @@ async fn launch_app(
 
         // Get the device from the database
         let query = "SELECT udid FROM devices WHERE ip = ?";
-        let mut statement = db.prepare(query).unwrap();
+        let mut statement = match crate::db::db_prepare(&db, query) {
+            Some(s) => s,
+            None => {
+                log::error!("Failed to prepare query!");
+                return Err(Json(LaunchAppReturn {
+                    ok: false,
+                    launching: false,
+                    mounting: false,
+                    position: None,
+                    error: Some("Failed to open database".to_string()),
+                }));
+            }
+        };
         statement.bind((1, ip.to_string().as_str())).unwrap();
         let udid = if let Ok(sqlite::State::Row) = statement.next() {
             let udid = statement.read::<String, _>("udid").unwrap();
@@ -714,7 +738,19 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
 
         // Get the device from the database
         let query = "SELECT udid FROM devices WHERE ip = ?";
-        let mut statement = db.prepare(query).unwrap();
+        let mut statement = match crate::db::db_prepare(&db, query) {
+            Some(s) => s,
+            None => {
+                log::error!("Failed to prepare query!");
+                return Err(Json(StatusReturn {
+                    ok: false,
+                    done: false,
+                    in_progress: false,
+                    position: 0,
+                    error: Some("Failed to open database".to_string()),
+                }));
+            }
+        };
         statement.bind((1, ip.to_string().as_str())).unwrap();
         let udid = if let Ok(sqlite::State::Row) = statement.next() {
             let udid = statement.read::<String, _>("udid").unwrap();

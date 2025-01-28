@@ -59,7 +59,13 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
 
         // Get the device from the database
         let query = "SELECT ip FROM devices WHERE udid = ?";
-        let mut statement = db.prepare(query).unwrap();
+        let mut statement = match crate::db::db_prepare(&db, query) {
+            Some(s) => s,
+            None => {
+                log::error!("Failed to prepare query!");
+                return None;
+            }
+        };
         statement
             .bind((1, cloned_udid.to_string().as_str()))
             .unwrap();
@@ -69,7 +75,13 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
 
             // Delete the device from the database
             let query = "DELETE FROM devices WHERE udid = ?";
-            let mut statement = db.prepare(query).unwrap();
+            let mut statement = match crate::db::db_prepare(&db, query) {
+                Some(s) => s,
+                None => {
+                    log::error!("Failed to prepare query!");
+                    return None;
+                }
+            };
             statement
                 .bind((1, cloned_udid.to_string().as_str()))
                 .unwrap();
@@ -191,7 +203,13 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
 
         // Insert the device into the database
         let query = "INSERT INTO devices (udid, ip, last_used) VALUES (?, ?, CURRENT_TIMESTAMP)";
-        let mut statement = db.prepare(query).unwrap();
+        let mut statement = match crate::db::db_prepare(&db, query) {
+            Some(s) => s,
+            None => {
+                log::error!("Failed to prepare query!");
+                return;
+            }
+        };
         statement
             .bind(&[(1, udid.as_str()), (2, ip.to_string().as_str())][..])
             .unwrap();

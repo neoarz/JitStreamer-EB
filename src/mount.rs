@@ -32,7 +32,13 @@ pub async fn get_queue_info(udid: &str) -> MountQueueInfo {
 
         // Determine the status of the UDID
         let query = "SELECT ordinal, status FROM mount_queue WHERE udid = ?";
-        let mut statement = db.prepare(query).unwrap();
+        let mut statement = match crate::db::db_prepare(&db, query) {
+            Some(s) => s,
+            None => {
+                log::error!("Failed to prepare query!");
+                return MountQueueInfo::ServerError;
+            }
+        };
         statement.bind((1, udid.as_str())).unwrap();
         let (ordinal, status) = if let Ok(State::Row) = statement.next() {
             let ordinal = statement.read::<i64, _>("ordinal").unwrap();
@@ -51,7 +57,13 @@ pub async fn get_queue_info(udid: &str) -> MountQueueInfo {
             1 => return MountQueueInfo::InProgress,
             2 => {
                 let query = "SELECT error FROM mount_queue WHERE ordinal = ?";
-                let mut statement = db.prepare(query).unwrap();
+                let mut statement = match crate::db::db_prepare(&db, query) {
+                    Some(s) => s,
+                    None => {
+                        log::error!("Failed to prepare query!");
+                        return MountQueueInfo::ServerError;
+                    }
+                };
                 statement.bind((1, ordinal as i64)).unwrap();
                 let error = if let Ok(State::Row) = statement.next() {
                     statement.read::<String, _>("error").unwrap()
@@ -60,7 +72,13 @@ pub async fn get_queue_info(udid: &str) -> MountQueueInfo {
                 };
                 // Delete the error from the database
                 let query = "DELETE FROM mount_queue WHERE ordinal = ?";
-                let mut statement = db.prepare(query).unwrap();
+                let mut statement = match crate::db::db_prepare(&db, query) {
+                    Some(s) => s,
+                    None => {
+                        log::error!("Failed to prepare query!");
+                        return MountQueueInfo::ServerError;
+                    }
+                };
                 statement.bind((1, ordinal as i64)).unwrap();
                 if let Err(e) = statement.next() {
                     log::error!("Failed to delete error: {:?}", e);
@@ -72,7 +90,13 @@ pub async fn get_queue_info(udid: &str) -> MountQueueInfo {
 
         // Determine the position of the UDID
         let query = "SELECT COUNT(*) FROM mount_queue WHERE ordinal < ? AND status = 0";
-        let mut statement = db.prepare(query).unwrap();
+        let mut statement = match crate::db::db_prepare(&db, query) {
+            Some(s) => s,
+            None => {
+                log::error!("Failed to prepare query!");
+                return MountQueueInfo::ServerError;
+            }
+        };
         statement.bind((1, ordinal as i64)).unwrap();
         let position = if let Ok(State::Row) = statement.next() {
             statement.read::<i64, _>(0).unwrap()
@@ -98,7 +122,13 @@ pub async fn add_to_queue(udid: &str, ip: String) {
         };
 
         let query = "INSERT INTO mount_queue (udid, ip, status) VALUES (?, ?, 0)";
-        let mut statement = db.prepare(query).unwrap();
+        let mut statement = match crate::db::db_prepare(&db, query) {
+            Some(s) => s,
+            None => {
+                log::error!("Failed to prepare query!");
+                return;
+            }
+        };
         statement
             .bind(&[(1, udid.as_str()), (2, ip.as_str())][..])
             .unwrap();
