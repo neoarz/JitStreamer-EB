@@ -1,7 +1,7 @@
 // Jackson Coxson
 // JitStreamer for the year of our Lord, 2025
 
-const VERSION: [u8; 3] = [0, 0, 4];
+const VERSION: [u8; 3] = [0, 1, 0];
 
 use std::{
     collections::HashMap,
@@ -465,12 +465,12 @@ async fn launch_app(
 
     // Check the mounting status
     match mount::get_queue_info(&udid).await {
-        mount::MountQueueInfo::Position(_) => {
+        mount::MountQueueInfo::Position(p) => {
             return Json(LaunchAppReturn {
-                ok: false,
+                ok: true,
                 launching: false,
                 mounting: true,
-                position: None,
+                position: Some(p),
                 error: None,
             });
         }
