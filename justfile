@@ -3,6 +3,7 @@ build:
 run: build
   sudo ./target/release/jitstreamer-eb
 docker-build:
+  cargo clean
   sudo docker build -t jitstreamer-eb .
 docker-run:
   sudo docker run --rm -it \
