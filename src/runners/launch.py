@@ -52,6 +52,8 @@ async def launch_app(udid, ip, bundle_id):
             )
 
             try:
+                if len(device.service.address):
+                    raise RuntimeError(f"No address for device {udid}")
                 debugserver = (host, port) = (
                     device.service.address[0],
                     device.get_service_port("com.apple.internal.dt.remote.debugproxy"),
