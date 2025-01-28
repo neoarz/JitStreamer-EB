@@ -1,7 +1,7 @@
 // Jackson Coxson
 // Abstractions for querying the mounting queue
 
-use log::info;
+use log::debug;
 use sqlite::State;
 
 pub enum MountQueueInfo {
@@ -43,7 +43,7 @@ pub async fn get_queue_info(udid: &str) -> MountQueueInfo {
         let (ordinal, status) = if let Ok(State::Row) = statement.next() {
             let ordinal = statement.read::<i64, _>("ordinal").unwrap();
             let status = statement.read::<i64, _>("status").unwrap();
-            info!(
+            debug!(
                 "Found device with ordinal {} and status {}",
                 ordinal, status
             );
