@@ -84,6 +84,7 @@ async fn main() {
         .route("/version", post(version))
         .route("/get_apps", get(get_apps))
         .route("/launch_app/{bundle_id}", get(launch_app))
+        .route("/status", get(status))
         .with_state(heartbeat_sender);
 
     let app = if allow_registration {
@@ -677,6 +678,160 @@ async fn launch_app(
             position: None,
             error: Some("Failed to add to queue".to_string()),
         }),
+    }
+}
+
+#[derive(Serialize)]
+struct StatusReturn {
+    done: bool,
+    ok: bool,
+    position: usize,
+    in_progress: bool,
+    error: Option<String>,
+}
+
+/// Gets the current status of the device
+/// Returns immediately if done or error
+/// Checks every second, up to 15 seconds for a new response.
+async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
+    let start_time = std::time::Instant::now();
+    let ip = ip.0;
+
+    let udid = match tokio::task::spawn_blocking(move || {
+        let db = match sqlite::open("jitstreamer.db") {
+            Ok(db) => db,
+            Err(e) => {
+                info!("Failed to open database: {:?}", e);
+                return Err(Json(StatusReturn {
+                    done: true,
+                    ok: false,
+                    position: 0,
+                    in_progress: false,
+                    error: Some(format!("Failed to open database: {:?}", e)),
+                }));
+            }
+        };
+
+        // Get the device from the database
+        let query = "SELECT udid FROM devices WHERE ip = ?";
+        let mut statement = db.prepare(query).unwrap();
+        statement.bind((1, ip.to_string().as_str())).unwrap();
+        let udid = if let Ok(sqlite::State::Row) = statement.next() {
+            let udid = statement.read::<String, _>("udid").unwrap();
+            info!("Found device with udid {}", udid);
+            udid
+        } else {
+            info!("No device found for IP {:?}", ip);
+            return Err(Json(StatusReturn {
+                done: true,
+                ok: false,
+                position: 0,
+                in_progress: false,
+                error: Some("No device found in database".to_string()),
+            }));
+        };
+        Ok(udid)
+    })
+    .await
+    .unwrap()
+    {
+        Ok(udid) => udid,
+        Err(e) => {
+            return e;
+        }
+    };
+
+    loop {
+        // Check mounts
+        // Check launches
+        // Check if it's been too long
+        let mut to_return = None;
+        match debug_server::get_queue_info(&udid).await {
+            debug_server::LaunchQueueInfo::Position(p) => {
+                to_return = Some(Json(StatusReturn {
+                    ok: true,
+                    done: false,
+                    position: p,
+                    in_progress: false,
+                    error: None,
+                }));
+            }
+            debug_server::LaunchQueueInfo::NotInQueue => {}
+            debug_server::LaunchQueueInfo::Error(e) => {
+                to_return = Some(Json(StatusReturn {
+                    ok: false,
+                    done: true,
+                    position: 0,
+                    in_progress: false,
+                    error: Some(e),
+                }));
+            }
+            debug_server::LaunchQueueInfo::ServerError => {
+                to_return = Some(Json(StatusReturn {
+                    ok: false,
+                    done: true,
+                    position: 0,
+                    in_progress: false,
+                    error: Some("server error".to_string()),
+                }));
+            }
+        }
+
+        // Check the mounting status
+        match mount::get_queue_info(&udid).await {
+            mount::MountQueueInfo::Position(p) => {
+                to_return = Some(Json(StatusReturn {
+                    ok: true,
+                    done: false,
+                    position: p,
+                    in_progress: false,
+                    error: None,
+                }));
+            }
+            mount::MountQueueInfo::NotInQueue => {}
+            mount::MountQueueInfo::Error(e) => {
+                to_return = Some(Json(StatusReturn {
+                    ok: false,
+                    done: true,
+                    position: 0,
+                    in_progress: false,
+                    error: Some(e),
+                }));
+            }
+            mount::MountQueueInfo::ServerError => {
+                to_return = Some(Json(StatusReturn {
+                    ok: false,
+                    done: true,
+                    position: 0,
+                    in_progress: false,
+                    error: Some("server error".to_string()),
+                }));
+            }
+            mount::MountQueueInfo::InProgress => {
+                to_return = Some(Json(StatusReturn {
+                    ok: true,
+                    done: false,
+                    position: 0,
+                    in_progress: true,
+                    error: None,
+                }));
+            }
+        }
+
+        if to_return.is_none() {
+            return Json(StatusReturn {
+                ok: true,
+                done: true,
+                position: 0,
+                in_progress: false,
+                error: None,
+            });
+        }
+
+        if start_time.elapsed() > std::time::Duration::from_secs(15) {
+            return to_return.unwrap();
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 }
 
