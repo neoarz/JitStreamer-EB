@@ -4,6 +4,7 @@
 const VERSION: [u8; 3] = [0, 0, 3];
 
 use std::{
+    collections::HashMap,
     net::{IpAddr, SocketAddr},
     str::FromStr,
 };
@@ -139,6 +140,7 @@ async fn version(Json(version): Json<VersionRequest>) -> Json<VersionResponse> {
 struct GetAppsReturn {
     ok: bool,
     apps: Vec<String>,
+    bundle_ids: Option<HashMap<String, String>>,
     error: Option<String>,
 }
 
@@ -163,6 +165,7 @@ async fn get_apps(
                 return Err(Json(GetAppsReturn {
                     ok: false,
                     apps: Vec::new(),
+                    bundle_ids: None,
                     error: Some(format!("Failed to open database: {:?}", e)),
                 }));
             }
@@ -181,6 +184,7 @@ async fn get_apps(
             return Err(Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
+                bundle_ids: None,
                 error: Some(format!("No device found for IP {:?}", ip)),
             }));
         };
@@ -204,77 +208,11 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
+                bundle_ids: None,
                 error: Some(format!("Failed to get pairing file: {:?}", e)),
             });
         }
     };
-
-    // Check if there are any launches queued
-    debug!("Checking launch queue for {udid}");
-    match debug_server::get_queue_info(&udid).await {
-        debug_server::LaunchQueueInfo::Position(p) => {
-            return Json(GetAppsReturn {
-                ok: false,
-                apps: Vec::new(),
-                error: Some(format!(
-                    "Your device is currently in the queue for launching. You are in position {p}."
-                )),
-            });
-        }
-        debug_server::LaunchQueueInfo::NotInQueue => {}
-        debug_server::LaunchQueueInfo::Error(e) => {
-            return Json(GetAppsReturn {
-                ok: false,
-                apps: Vec::new(),
-                error: Some(e),
-            });
-        }
-        debug_server::LaunchQueueInfo::ServerError => {
-            return Json(GetAppsReturn {
-                ok: false,
-                apps: Vec::new(),
-                error: Some("Failed to get launch status".to_string()),
-            });
-        }
-    }
-
-    // Check if there are any mounts queued
-    debug!("Checking mount queue for {udid}");
-    match mount::get_queue_info(&udid).await {
-        mount::MountQueueInfo::Position(p) => {
-            return Json(GetAppsReturn {
-                ok: false,
-                apps: Vec::new(),
-                error: Some(format!(
-                    "Your device is currently in the queue for mounting. You are in position {p}."
-                )),
-            });
-        }
-        mount::MountQueueInfo::NotInQueue => {}
-        mount::MountQueueInfo::Error(e) => {
-            return Json(GetAppsReturn {
-                ok: false,
-                apps: Vec::new(),
-                error: Some(e),
-            });
-        }
-        mount::MountQueueInfo::ServerError => {
-            return Json(GetAppsReturn {
-                ok: false,
-                apps: Vec::new(),
-                error: Some("Failed to get mounting status".to_string()),
-            });
-        }
-        mount::MountQueueInfo::InProgress => {
-            return Json(GetAppsReturn {
-                ok: false,
-                apps: Vec::new(),
-                error: Some(
-                    "Your device is currently mounting the developer disk image".to_string(),
-                ),
-            });
-        }
-    }
 
     // Heartbeat the device
     match heartbeat::heartbeat_thread(udid.clone(), ip, &pairing_file).await {
@@ -289,6 +227,7 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
+                bundle_ids: None,
                 error: Some(format!("Failed to heartbeat device: {:?}", e)),
             });
         }
@@ -308,6 +247,7 @@ async fn get_apps(
         return Json(GetAppsReturn {
             ok: false,
             apps: Vec::new(),
+            bundle_ids: None,
             error: Some(format!("Failed to start session: {:?}", e)),
         });
     }
@@ -322,6 +262,7 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
+                bundle_ids: None,
                 error: Some(format!("Failed to start service: {:?}", e)),
             });
         }
@@ -335,6 +276,7 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
+                bundle_ids: None,
                 error: Some(format!("Failed to connect to installation_proxy: {:?}", e)),
             });
         }
@@ -347,6 +289,7 @@ async fn get_apps(
         return Json(GetAppsReturn {
             ok: false,
             apps: Vec::new(),
+            bundle_ids: None,
             error: Some(format!("Failed to start session: {:?}", e)),
         });
     }
@@ -359,11 +302,12 @@ async fn get_apps(
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
+                bundle_ids: None,
                 error: Some(format!("Failed to get apps: {:?}", e)),
             });
         }
     };
-    let apps: Vec<String> = apps
+    let apps: HashMap<String, String> = apps
         .into_iter()
         .filter(|(_, app)| {
             // Filter out apps that don't have get-task-allow
@@ -382,13 +326,23 @@ async fn get_apps(
                 _ => false,
             }
         })
-        .map(|(bundle_id, _)| bundle_id)
+        .map(|(bundle_id, app)| {
+            let name = match app {
+                plist::Value::Dictionary(mut d) => match d.remove("CFBundleName") {
+                    Some(plist::Value::String(bundle_name)) => bundle_name,
+                    _ => bundle_id.clone(),
+                },
+                _ => bundle_id.clone(),
+            };
+            (name.clone(), bundle_id)
+        })
         .collect();
 
     if apps.is_empty() {
         return Json(GetAppsReturn {
             ok: false,
             apps: Vec::new(),
+            bundle_ids: None,
             error: Some("No apps with get-task-allow found".to_string()),
         });
     }
@@ -400,7 +354,8 @@ async fn get_apps(
 
     Json(GetAppsReturn {
         ok: true,
-        apps,
+        apps: apps.keys().map(|x| x.to_string()).collect(),
+        bundle_ids: Some(apps),
         error: None,
     })
 }
@@ -408,6 +363,8 @@ async fn get_apps(
 #[derive(Serialize, Deserialize)]
 struct LaunchAppReturn {
     ok: bool,
+    launching: bool,
+    mounting: bool,
     position: Option<usize>,
     error: Option<String>,
 }
@@ -435,6 +392,8 @@ async fn launch_app(
                 info!("Failed to open database: {:?}", e);
                 return Err(Json(LaunchAppReturn {
                     ok: false,
+                    launching: false,
+                    mounting: false,
                     position: None,
                     error: Some(format!("Failed to open database: {:?}", e)),
                 }));
@@ -453,8 +412,10 @@ async fn launch_app(
             info!("No device found for IP {:?}", ip);
             return Err(Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
-                error: Some("No device found".to_string()),
+                error: Some("No device found in database".to_string()),
             }));
         };
         Ok(udid)
@@ -468,21 +429,56 @@ async fn launch_app(
         }
     };
 
-    // Check the mounting status
-    match mount::get_queue_info(&udid).await {
-        mount::MountQueueInfo::Position(p) => {
+    // Check if there are any launches queued
+    debug!("Checking launch queue for {udid}");
+    match debug_server::get_queue_info(&udid).await {
+        debug_server::LaunchQueueInfo::Position(p) => {
+            return Json(LaunchAppReturn {
+                ok: true,
+                launching: true,
+                mounting: false,
+                position: Some(p),
+                error: None,
+            });
+        }
+        debug_server::LaunchQueueInfo::NotInQueue => {}
+        debug_server::LaunchQueueInfo::Error(e) => {
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
-                error: Some(format!(
-                    "Your device is currently in the queue for mounting. You are in position {p}."
-                )),
+                error: Some(e),
+            });
+        }
+        debug_server::LaunchQueueInfo::ServerError => {
+            return Json(LaunchAppReturn {
+                ok: false,
+                launching: false,
+                mounting: false,
+                position: None,
+                error: Some("Failed to get launch status".to_string()),
+            });
+        }
+    }
+
+    // Check the mounting status
+    match mount::get_queue_info(&udid).await {
+        mount::MountQueueInfo::Position(_) => {
+            return Json(LaunchAppReturn {
+                ok: false,
+                launching: false,
+                mounting: true,
+                position: None,
+                error: None,
             });
         }
         mount::MountQueueInfo::NotInQueue => {}
         mount::MountQueueInfo::Error(e) => {
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
                 error: Some(e),
             });
@@ -490,17 +486,19 @@ async fn launch_app(
         mount::MountQueueInfo::ServerError => {
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
                 error: Some("Failed to get mounting status".to_string()),
             });
         }
         mount::MountQueueInfo::InProgress => {
             return Json(LaunchAppReturn {
-                ok: false,
+                ok: true,
+                launching: false,
+                mounting: true,
                 position: None,
-                error: Some(
-                    "Your device is currently mounting the developer disk image".to_string(),
-                ),
+                error: None,
             });
         }
     }
@@ -512,6 +510,8 @@ async fn launch_app(
             info!("Failed to get pairing file: {:?}", e);
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
                 error: Some(format!("Failed to get pairing file: {:?}", e)),
             });
@@ -530,6 +530,8 @@ async fn launch_app(
             info!("Failed to heartbeat device: {:?}", e);
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
                 error: Some(format!("Failed to heartbeat device: {:?}", e)),
             });
@@ -544,6 +546,8 @@ async fn launch_app(
             info!("Failed to connect to lockdownd: {:?}", e);
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
                 error: Some(format!("Failed to connect to lockdownd: {:?}", e)),
             });
@@ -558,6 +562,8 @@ async fn launch_app(
         info!("Failed to start session: {:?}", e);
         return Json(LaunchAppReturn {
             ok: false,
+            launching: false,
+            mounting: false,
             position: None,
             error: Some(format!("Failed to start session: {:?}", e)),
         });
@@ -572,6 +578,8 @@ async fn launch_app(
             info!("Failed to start service: {:?}", e);
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
                 error: Some(format!("Failed to start service: {:?}", e)),
             });
@@ -585,6 +593,8 @@ async fn launch_app(
             info!("Failed to connect to image_mounter: {:?}", e);
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
                 error: Some(format!("Failed to connect to image_mounter: {:?}", e)),
             });
@@ -597,6 +607,8 @@ async fn launch_app(
         info!("Failed to start session: {:?}", e);
         return Json(LaunchAppReturn {
             ok: false,
+            launching: false,
+            mounting: false,
             position: None,
             error: Some(format!("Failed to start session: {:?}", e)),
         });
@@ -609,6 +621,8 @@ async fn launch_app(
             info!("Failed to get images: {:?}", e);
             return Json(LaunchAppReturn {
                 ok: false,
+                launching: false,
+                mounting: false,
                 position: None,
                 error: Some(format!("Failed to get images: {:?}", e)),
             });
@@ -634,7 +648,9 @@ async fn launch_app(
 
         // Return a message letting the user know the device is mounting
         return Json(LaunchAppReturn {
-            ok: false,
+            ok: true,
+            launching: false,
+            mounting: true,
                 position: None,
             error: Some("Your device has been added to the queue for image mounting. Please try again in a minute.".to_string()),
         });
@@ -649,11 +665,15 @@ async fn launch_app(
     match debug_server::add_to_queue(&udid, ip.to_string(), &bundle_id).await {
         Some(position) => Json(LaunchAppReturn {
             ok: true,
+            launching: true,
+            mounting: false,
             position: Some(position as usize),
             error: None,
         }),
         None => Json(LaunchAppReturn {
             ok: false,
+            launching: false,
+            mounting: false,
             position: None,
             error: Some("Failed to add to queue".to_string()),
         }),
