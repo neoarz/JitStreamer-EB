@@ -829,6 +829,7 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
         }
 
         if start_time.elapsed() > std::time::Duration::from_secs(15) {
+            info!("Returning status for {udid}");
             return to_return.unwrap();
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
