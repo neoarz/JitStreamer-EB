@@ -52,7 +52,7 @@ async def launch_app(udid, ip, bundle_id):
             )
 
             try:
-                if len(device.service.address):
+                if len(device.service.address) == 0:
                     raise RuntimeError(f"No address for device {udid}")
                 debugserver = (host, port) = (
                     device.service.address[0],
