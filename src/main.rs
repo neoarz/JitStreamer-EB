@@ -1,7 +1,7 @@
 // Jackson Coxson
 // JitStreamer for the year of our Lord, 2025
 
-const VERSION: [u8; 3] = [0, 0, 3];
+const VERSION: [u8; 3] = [0, 0, 4];
 
 use std::{
     collections::HashMap,
