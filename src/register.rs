@@ -8,19 +8,29 @@ use sqlite::State;
 
 /// Check to make sure the Wireguard interface exists
 pub fn check_wireguard() {
-    if !std::fs::exists("/etc/wireguard/jitstreamer.conf").unwrap() {
+    let wireguard_config_name =
+        std::env::var("WIREGUARD_CONFIG_NAME").unwrap_or("jitstreamer".to_string());
+    let wireguard_conf = format!("/etc/wireguard/{wireguard_config_name}.conf");
+    let wireguard_port = std::env::var("WIREGUARD_PORT")
+        .unwrap_or("51869".to_string())
+        .parse::<u16>()
+        .unwrap_or(51869);
+    let wireguard_server_address =
+        std::env::var("WIREGUARD_SERVER_ADDRESS").unwrap_or("fd00::/128".to_string());
+
+    if !std::fs::exists(&wireguard_conf).unwrap() {
         let key = wg_config::WgKey::generate_private_key().expect("failed to generate key");
         let interface = wg_config::WgInterface::new(
             key,
-            "fd00::/128".parse().unwrap(),
-            Some(51869),
+            wireguard_server_address.parse().unwrap(),
+            Some(wireguard_port),
             None,
             None,
             None,
         )
         .unwrap();
 
-        wg_config::WgConf::create("/etc/wireguard/jitstreamer.conf", interface, None)
+        wg_config::WgConf::create(wireguard_conf.as_str(), interface, None)
             .expect("failed to create config");
 
         info!("Created new Wireguard config");
@@ -28,7 +38,7 @@ pub fn check_wireguard() {
         // Run wg-quick up jitstreamer
         let _ = std::process::Command::new("bash")
             .arg("-c")
-            .arg("wg-quick up jitstreamer")
+            .arg(format!("wg-quick up {wireguard_config_name}"))
             .output()
             .expect("failed to execute process");
     }
@@ -103,8 +113,22 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
         }
     };
 
+    let wireguard_config_name =
+        std::env::var("WIREGUARD_CONFIG_NAME").unwrap_or("jitstreamer".to_string());
+    let wireguard_conf = format!("/etc/wireguard/{wireguard_config_name}.conf");
+    let wireguard_port = std::env::var("WIREGUARD_PORT")
+        .unwrap_or("51869".to_string())
+        .parse::<u16>()
+        .unwrap_or(51869);
+    let wireguard_server_address =
+        std::env::var("WIREGUARD_SERVER_ADDRESS").unwrap_or("fd00::/128".to_string());
+    let wireguard_endpoint =
+        std::env::var("WIREGUARD_ENDPOINT").unwrap_or("jitstreamer.jkcoxson.com".to_string());
+    let wireguard_server_allowed_ips =
+        std::env::var("WIREGUARD_SERVER_ALLOWED_IPS").unwrap_or("fd00::/64".to_string());
+
     // Read the Wireguard config file
-    let mut server_peer = match wg_config::WgConf::open("/etc/wireguard/jitstreamer.conf") {
+    let mut server_peer = match wg_config::WgConf::open(&wireguard_conf) {
         Ok(conf) => conf,
         Err(e) => {
             info!("Failed to open Wireguard config: {:?}", e);
@@ -114,20 +138,20 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
                 let key = wg_config::WgKey::generate_private_key().expect("failed to generate key");
                 let interface = wg_config::WgInterface::new(
                     key,
-                    "fd00::/128".parse().unwrap(),
-                    Some(51869),
+                    wireguard_server_address.parse().unwrap(),
+                    Some(wireguard_port),
                     None,
                     None,
                     None,
                 )
                 .unwrap();
 
-                wg_config::WgConf::create("/etc/wireguard/jitstreamer.conf", interface, None)
+                wg_config::WgConf::create(wireguard_conf.as_str(), interface, None)
                     .expect("failed to create config");
 
                 info!("Created new Wireguard config");
 
-                wg_config::WgConf::open("/etc/wireguard/jitstreamer.conf").unwrap()
+                wg_config::WgConf::open(wireguard_conf.as_str()).unwrap()
             } else {
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -169,8 +193,8 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
     // Generate a new peer for the device
     let client_config = match server_peer.generate_peer(
         std::net::IpAddr::V6(ip),
-        "jitstreamer.jkcoxson.com".parse().unwrap(),
-        vec!["fd00::/64".parse().unwrap()],
+        wireguard_endpoint.parse().unwrap(),
+        vec![wireguard_server_allowed_ips.parse().unwrap()],
         None,
         true,
         Some(20),
@@ -250,10 +274,15 @@ fn generate_ipv6_from_udid(udid: &str) -> std::net::Ipv6Addr {
 }
 
 fn refresh_wireguard() {
+    let wireguard_config_name =
+        std::env::var("WIREGUARD_CONFIG_NAME").unwrap_or("jitstreamer".to_string());
+
     // wg syncconf jitstreamer <(wg-quick strip jitstreamer)
     let output = std::process::Command::new("bash")
         .arg("-c")
-        .arg("wg syncconf jitstreamer <(wg-quick strip jitstreamer)")
+        .arg(format!(
+            "wg syncconf jitstreamer <(wg-quick strip {wireguard_config_name})"
+        ))
         .output()
         .expect("failed to execute process");
 

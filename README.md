@@ -35,7 +35,7 @@ It's not that deep.
 pip install -r requirements.txt
 ```
 
-3. Start [tunneld-rs](https://github.com/jkcoxson/tunneld-rs)
+3. Start [tunneld-rs](https://github.com/jkcoxson/tunneld-rs) or [tunneld](https://doronz88/pymobiledevice3)
 
 4. Run the program
 
@@ -57,6 +57,31 @@ sudo wg-quick up jitstreamer
 
 6. ???
 7. Profit
+
+### Variables
+
+JitStreamer reads the following environment variables:
+
+- ``RUNNER_COUNT`` - How many Python runners to spawn, defaults to ``5``
+- ``ALLOW_REGISTRATION`` - Allows clients to register using the ``/register`` endpoint, defaults to ``1``
+- ``JITSTREAMER_PORT`` - The port to bind to, defaults to ``9172``
+- ``WIREGUARD_CONFIG_NAME`` - The name of the Wireguard interface, defaults to ``jitstreamer``
+- ``WIREGUARD_PORT`` - The port that Wireguard listens on, defaults to ``51869``
+- ``WIREGUARD_SERVER_ADDRESS`` - The address the server binds to, defaults to ``fd00::``
+- ``WIREGUARD_ENDPOINT`` - The endpoint that client configs point to, defaults to ``jitstreamer.jkcoxson.com``
+- ``WIREGUARD_SERVER_ALLOWED_IPS`` - The allowed IPs the server can bind to, defaults to ``fd00::/64``
+
+### Custom VPN
+
+If you don't want to use the built-in Wireguard manager, because you either
+have your own VPN or want to use a different one, you'll have to manually
+register your clients.
+
+Run the following SQL on the ``jitstreamer.db`` sqlite file:
+
+```sql
+INSERT INTO DEVICES (udid, ip, last_used) VALUES ([udid], [ip], CURRENT_TIMESTAMP);
+```
 
 ## Docker
 
