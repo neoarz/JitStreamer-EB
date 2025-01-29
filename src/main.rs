@@ -188,7 +188,7 @@ async fn get_apps(
             }
         };
         statement.bind((1, ip.to_string().as_str())).unwrap();
-        let udid = if let Ok(sqlite::State::Row) = statement.next() {
+        let udid = if let Some(sqlite::State::Row) = crate::db::statement_next(&mut statement) {
             let udid = statement.read::<String, _>("udid").unwrap();
             info!("Found device with udid {}", udid);
             udid
@@ -429,7 +429,7 @@ async fn launch_app(
             }
         };
         statement.bind((1, ip.to_string().as_str())).unwrap();
-        let udid = if let Ok(sqlite::State::Row) = statement.next() {
+        let udid = if let Some(sqlite::State::Row) = crate::db::statement_next(&mut statement) {
             let udid = statement.read::<String, _>("udid").unwrap();
             info!("Found device with udid {}", udid);
             udid
@@ -752,7 +752,7 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
             }
         };
         statement.bind((1, ip.to_string().as_str())).unwrap();
-        let udid = if let Ok(sqlite::State::Row) = statement.next() {
+        let udid = if let Some(sqlite::State::Row) = crate::db::statement_next(&mut statement) {
             let udid = statement.read::<String, _>("udid").unwrap();
             info!("Found device with udid {}", udid);
             udid

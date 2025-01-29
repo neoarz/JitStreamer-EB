@@ -69,7 +69,7 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
         statement
             .bind((1, cloned_udid.to_string().as_str()))
             .unwrap();
-        if let Ok(State::Row) = statement.next() {
+        if let Some(State::Row) = crate::db::statement_next(&mut statement) {
             let ip = statement.read::<String, _>("ip").unwrap();
             info!("Found device with udid {} already in db", cloned_udid);
 
@@ -85,7 +85,9 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
             statement
                 .bind((1, cloned_udid.to_string().as_str()))
                 .unwrap();
-            statement.next().unwrap();
+            if crate::db::statement_next(&mut statement).is_none() {
+                log::error!("Failed to enact the statement");
+            }
 
             Some(ip)
         } else {
@@ -213,7 +215,9 @@ pub async fn register(plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static
         statement
             .bind(&[(1, udid.as_str()), (2, ip.to_string().as_str())][..])
             .unwrap();
-        statement.next().unwrap();
+        if crate::db::statement_next(&mut statement).is_none() {
+            log::error!("Failed to enact the statement");
+        }
     });
 
     refresh_wireguard();

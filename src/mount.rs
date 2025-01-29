@@ -132,7 +132,9 @@ pub async fn add_to_queue(udid: &str, ip: String) {
         statement
             .bind(&[(1, udid.as_str()), (2, ip.as_str())][..])
             .unwrap();
-        statement.next().unwrap();
+        if crate::db::statement_next(&mut statement).is_none() {
+            log::error!("Failed to insert into mount queue");
+        }
     })
     .await
     .unwrap();
@@ -150,7 +152,9 @@ pub async fn empty() {
 
         let query = "DELETE FROM mount_queue";
         let mut statement = db.prepare(query).unwrap();
-        statement.next().unwrap();
+        if crate::db::statement_next(&mut statement).is_none() {
+            log::error!("Failed to empty mount queue");
+        }
     })
     .await
     .unwrap();

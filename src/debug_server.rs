@@ -42,7 +42,8 @@ pub async fn get_queue_info(udid: &str) -> LaunchQueueInfo {
             }
         };
         statement.bind((1, udid.as_str())).unwrap();
-        let (ordinal, status) = if let Ok(State::Row) = statement.next() {
+        let (ordinal, status) = if let Some(State::Row) = crate::db::statement_next(&mut statement)
+        {
             let ordinal = statement.read::<i64, _>("ordinal").unwrap();
             let status = statement.read::<i64, _>("status").unwrap();
             debug!(
@@ -67,7 +68,7 @@ pub async fn get_queue_info(udid: &str) -> LaunchQueueInfo {
                     }
                 };
                 statement.bind((1, ordinal as i64)).unwrap();
-                let error = if let Ok(State::Row) = statement.next() {
+                let error = if let Some(State::Row) = crate::db::statement_next(&mut statement) {
                     statement.read::<String, _>("error").unwrap()
                 } else {
                     "Unknown error".to_string()
@@ -82,8 +83,8 @@ pub async fn get_queue_info(udid: &str) -> LaunchQueueInfo {
                     }
                 };
                 statement.bind((1, ordinal as i64)).unwrap();
-                if let Err(e) = statement.next() {
-                    log::error!("Failed to delete record: {:?}", e);
+                if crate::db::statement_next(&mut statement).is_none() {
+                    log::error!("Failed to delete record");
                 }
                 return LaunchQueueInfo::Error(error);
             }
@@ -100,7 +101,7 @@ pub async fn get_queue_info(udid: &str) -> LaunchQueueInfo {
             }
         };
         statement.bind((1, ordinal as i64)).unwrap();
-        let position = if let Ok(State::Row) = statement.next() {
+        let position = if let Some(State::Row) = crate::db::statement_next(&mut statement) {
             statement.read::<i64, _>(0).unwrap()
         } else {
             return LaunchQueueInfo::ServerError;
@@ -137,18 +138,10 @@ pub async fn add_to_queue(udid: &str, ip: String, bundle_id: &str) -> Option<i64
         statement.bind((3, bundle_id.as_str())).unwrap();
 
 
-        let mut tries = 5;
-        while tries > 0 {
-            if let Err(e) = statement.next() {
-                log::warn!("Database is locked: {:?}", e);
-                if tries == 0 {
-                    return None;
-                }
-                tries -= 1;
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            } else {
-                break;
-            }
+
+        if crate::db::statement_next(&mut statement).is_none() {
+            log::error!("Failed to insert into launch queue");
+            return None;
         }
 
         // Get the position of the newly added UDID
@@ -161,7 +154,7 @@ pub async fn add_to_queue(udid: &str, ip: String, bundle_id: &str) -> Option<i64
             }
         };
         statement.bind((1, udid.as_str())).unwrap();
-        if let Ok(State::Row) = statement.next() {
+        if let Some(State::Row) = crate::db::statement_next(&mut statement) {
             Some(statement.read::<i64, _>(0).unwrap())
         } else {
             None
@@ -183,7 +176,9 @@ pub async fn empty() {
 
         let query = "DELETE FROM launch_queue";
         let mut statement = db.prepare(query).unwrap();
-        statement.next().unwrap();
+        if crate::db::statement_next(&mut statement).is_none() {
+            log::error!("Failed to empty launch queue");
+        }
     })
     .await
     .unwrap();
