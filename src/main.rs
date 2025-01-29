@@ -705,7 +705,7 @@ async fn launch_app(
     }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct StatusReturn {
     done: bool,
     ok: bool,
@@ -854,21 +854,26 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
             }
         }
 
-        if to_return.is_none() {
-            return Json(StatusReturn {
-                ok: true,
-                done: true,
-                position: 0,
-                in_progress: false,
-                error: None,
-            });
+        match to_return {
+            Some(to_return) => {
+                if start_time.elapsed() > std::time::Duration::from_secs(15) || to_return.done {
+                    info!("Returning status for {udid}: {to_return:?}");
+                    return to_return;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            None => {
+                if to_return.is_none() {
+                    return Json(StatusReturn {
+                        ok: true,
+                        done: true,
+                        position: 0,
+                        in_progress: false,
+                        error: None,
+                    });
+                }
+            }
         }
-
-        if start_time.elapsed() > std::time::Duration::from_secs(15) {
-            info!("Returning status for {udid}");
-            return to_return.unwrap();
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 }
 
