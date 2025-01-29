@@ -23,7 +23,7 @@ RUN cargo build --release
 # Clone and build netmuxd
 RUN git clone https://github.com/jkcoxson/netmuxd.git && \
     cd netmuxd && \
-    git reset --hard 1a900f71863a7279cf032b0860554a531f805ef3 && \
+    git reset --hard bb1477bf8c610343d203098f85869e88ee9bb149 && \
     cargo build --release && \
     cd ..
 
