@@ -95,7 +95,7 @@ just docker-run
 
 ## License
 
-MIT
+[LICENSE.md]
 
 ## Contributing
 
