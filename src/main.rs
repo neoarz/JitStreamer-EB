@@ -236,12 +236,18 @@ async fn get_apps(
                 .unwrap();
         }
         Err(e) => {
+            let e = match e {
+                idevice::IdeviceError::InvalidHostID => {
+                    "your pairing file is invalid. Regenerate it with jitterbug pair.".to_string()
+                }
+                _ => e.to_string(),
+            };
             info!("Failed to heartbeat device: {:?}", e);
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
                 bundle_ids: None,
-                error: Some(format!("Failed to heartbeat device: {:?}", e)),
+                error: Some(format!("Failed to heartbeat device: {e}")),
             });
         }
     }
