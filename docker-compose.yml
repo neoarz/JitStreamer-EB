@@ -1,6 +1,6 @@
 services:
     jitstreamer-eb:
-        container_name: jitstreamer-eb-2
+        container_name: jitstreamer-eb
         network_mode: host #TODO, is bridge mode possible?
         volumes:
             - ./lockdown:/var/lib/lockdown
