@@ -88,6 +88,23 @@ INSERT INTO DEVICES (udid, ip, last_used) VALUES ([udid], [ip], CURRENT_TIMESTAM
 There's a nice dockerfile that contains a Wireguard server and JitStreamer server,
 all packaged and ready to go. It contains everything you need to run the server.
 
+1. create a database
+```bash
+mkdir app
+sqlite3 ./jitstreamer.db < ./src/sql/up.sql
+```
+
+2. build docker
+```bash
+sudo docker build -t jitstreamer-eb .
+```
+
+3. run docker compose
+```bash
+sudo docker compose up -d
+```
+
+Alternative method:
 ```bash
 just docker-build
 just docker-run
