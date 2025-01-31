@@ -35,7 +35,7 @@ It's not that deep.
 pip install -r requirements.txt
 ```
 
-3. Start [tunneld-rs](https://github.com/jkcoxson/tunneld-rs) or [tunneld](https://doronz88/pymobiledevice3)
+3. Start [tunneld-rs](https://github.com/jkcoxson/tunneld-rs) or [tunneld](https://github.com/doronz88/pymobiledevice3)
 
 4. Run the program
 
