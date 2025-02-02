@@ -315,6 +315,10 @@ async fn get_apps(
 
     let mut instproxy_client = InstallationProxyClient::new(idevice);
     let apps = match instproxy_client.get_apps(None, None).await {
+    let apps = match instproxy_client
+        .get_apps(Some("User".to_string()), None)
+        .await
+    {
         Ok(apps) => apps,
         Err(e) => {
             info!("Failed to get apps: {:?}", e);
