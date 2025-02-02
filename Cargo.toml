@@ -15,8 +15,9 @@ env_logger = { version = "0.11" }
 log = { version = "0.4" }
 idevice = { version = "0.1.16", features = [
   "heartbeat",
-  "image_mounter",
+  "mounter",
   "tcp",
+  "installation_proxy",
 ] }
 plist = { version = "1.7" }
 sqlite = { version = "0.36" }
