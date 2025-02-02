@@ -4,7 +4,7 @@
 
 I write these little guides for myself and sometimes like to share. My goal is only to provide more precise and full instructions to those who have very little to no knowledge of the required tools.
 
-This guide will going over how to get JITStreamer-EB (I'll refer to it as the "project" in the future to shorten my typing) up and running in Docker. Specifically using Docker Compose. Docker Compose offers, in my opinion, a much easier deployment of Docker containers. This is absolutely not the only way to run this project.
+This guide will be going over how to get JITStreamer-EB (I'll refer to it as the "project" in the future to shorten my typing) up and running in Docker. Specifically using Docker Compose. Docker Compose offers, in my opinion, a much easier deployment of Docker containers. This is absolutely not the only way to run this project.
 
 ## Credit and Sources
 
@@ -18,17 +18,13 @@ The GOAT jkcoxson created this beautiful project for us. Here's his [GitHub](htt
 
 Here's some other sites and specific links I found personally useful for random "How do I do..." questions:
 
-Sqlite related stuff
+[Sqlite Tutorial](https://www.sqlitetutorial.net/)
 
-https://www.sqlitetutorial.net/
+[Creating and Deleting Databases and Tables](https://www.prisma.io/dataguide/sqlite/creating-and-deleting-databases-and-tables)
 
-https://www.prisma.io/dataguide/sqlite/creating-and-deleting-databases-and-tables
+[Inserting and Deleting Data](https://www.prismagraphql.com/dataguide/sqlite/inserting-and-deleting-data)
 
-https://www.prismagraphql.com/dataguide/sqlite/inserting-and-deleting-data
-
-UFW in Debian
-
-https://wiki.debian.org/Uncomplicated%20Firewall%20%28ufw%29
+[UFW in Debian](https://wiki.debian.org/Uncomplicated%20Firewall%20%28ufw%29)
 
 ## Prerequisites
 
@@ -42,7 +38,7 @@ Go to the hyperlink (Debian users) or otherwise locate your required version of 
 
 **This is me assuming you are installing Docker on a fresh OS** (as I am too!). Go to the link and follow instructions if you need to "clean out" old stuff. (You probably do not need to).
 
-1 Add the Docker sources
+1. Add the Docker sources
 
 ```
 # Add Docker's official GPG key:
@@ -60,15 +56,17 @@ echo \
 sudo apt-get update
 ```
 
-2 Install
+2. Install
 
 ```sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin```
 
-3 Test
+3. Test
 
 ```sudo docker run hello-world```
 
 The above step should pop out a message beginning with "Hello from Docker!" and a long message after that. If so, good, Docker is installed. We're going to add our user to the docker group so that we don't need to type "sudo docker" constantly. You can skip this if you don't care about typing sudo and your password constantly.
+
+**Note: I feel compelled to mention that adding your user to the "docker" group is considered a possible security risk. I won't comment further, but I will leave the [link](https://docs.docker.com/engine/security/#docker-daemon-attack-surface) from the Docker website directly. This was brought to my attention by user "@Laes" in the Discord (Thank you for informing me.) I won't delete the information below, but I will say if you go to the link and read it and don't fully comprehend what it says, then maybe just stick to typing ```sudo docker```. As Laes put it, (paraphrasing) "You only have to type ```sudo docker``` a few times then never again." Which is true, and I agree with this sentiment now.**
 
 Copy/pasted from [here](https://docs.docker.com/engine/install/linux-postinstall/). Go there for more details. It's pretty straight forward, though.
 
@@ -127,12 +125,16 @@ You can do this via GUI (with a file manager) or in the terminal. Whatever bring
 
 ```cd ~/Downloads```
 
-2. Copy it to the correct directory.
+2. Make the lockdown directory for the plist files. (If you ran the container already for some reason, this directory already exists.)
 
-Type "ls" first to list all the files. Makes copy/paste easier with these huge file names.
-Note: The below file name is FAKE. You need to use your own file with your own device's UDID. The ls command will show all your file names. Just copy the relevant ones.
+```mkdir ~/JitStreamer-EB/lockdown```
+
+3. Type "ls" first to list all the files. It makes copy/paste easier with these huge file names.
 
 ```ls```
+
+4. Note: The below file name is FAKE. You need to use your own file with your own device's UDID. The ls command will show all your file names. Just copy the relevant ones.
+
 ```cp 00008111-111122223333801E.plist ~/JitStreamer-EB/lockdown```
 
 Easy!
@@ -147,6 +149,7 @@ This part might be a bit weird. Prepare yourself.
 mkdir app
 sqlite3 ./jitstreamer.db < ./src/sql/up.sql
 ```
+
 2. Now you have a fancy little database. But you need to add your device info into it.
 
 Note: There are likely many ways to achieve the desired result here. This is just how I did it. It may be more steps than required, but it lets you see how the database works internally which I prefer for myself.
@@ -232,15 +235,16 @@ Note: you are still in ```~/JitStreamer-EB``` when you run this!
 ```docker compose up -d```
 
 3. I like to see the logs running live with:
+
 ```docker logs -t -f jitstreamer-eb```
 
 You should see a long stream of stuff happening. Good, good. (Ctrl + C will take you out of this screen)
 
 ### Setting Up the Shortcut on Your iDevice
 
-1. Go to this [site](https://jkcoxson.com/jitstreamer)
+1. On your iPhone or iPad, go to this [site](https://jkcoxson.com/jitstreamer)
 
-2. Go to the bottom. Download that Shortcut. You will also need the Shortcuts app for iOS, obviously.
+2. Go to the bottom. Download that Shortcut. You will also need the Shortcuts app for iOS, obviously. Download it if you need to from the Apple App Store.
 
 3. Open Shortcuts on iOS
 
@@ -250,10 +254,12 @@ You should see a long stream of stuff happening. Good, good. (Ctrl + C will take
 
 6. Select the option "Edit"
 
-7. Locate the IP section that needs changed. Under the long introduction from jkcoxson, you'll see a section with a yellow-colored icon called "Text". In the editable area it will have http://[an-ip]:9172
+7. Locate the IP section that needs changed. Under the long introduction from jkcoxson, you'll see a section with a yellow-colored icon called "Text". In the editable area it will have http://[an-ip]:9172 . This is the area we will be changing.
 
 8. Change it so that it matches the IP of your HOST machine. The machine you are running Docker on. Example:
+
 ```http://192.168.1.3:9172```
+
 Obviously the IP would be your own IP.
 
 9. Hit "Done" in the upper-right corner.
@@ -261,6 +267,7 @@ Obviously the IP would be your own IP.
 ### Oh Yeah, It's All Coming Together... Time to JIT
 
 Pre-flight checklist
+
 1. Your docker container is running on your host machine without any crazy errors. Type ```docker ps``` to see a list of running containers.
 
 2. Your host machine (where the Docker container is running) is on the same network as your iDevice. You can change this later, but for testing purposes at first, be on the same network to eliminate that as a possible source of problems.
@@ -271,7 +278,7 @@ Good?
 
 Tap the Shortcut to run it!
 
-If you have the Docker container logs running still (I recommend you do!) you will see some stuff happening as your iDevice connects to your host and docker container. Do not leave the Shortcuts app. Just wait a moment. It takes a couple seconds. If everything is going ok, it will pop up with a list of apps. You will select the app you want to enable JIT for. The shortcut and container will begin working again. Give another moment to finish. Eventually it will say something like "You are 0 in the queue." After which (give it another moment!) your app should launch automatically. 
+If you have the Docker container logs running still (I recommend you do!) you will see some stuff happening as your iDevice connects to your host and docker container. Do not leave the Shortcuts app. Just wait a moment. It takes a couple seconds. If everything is going ok, it will pop up with a list of apps. You will select the app you want to enable JIT for. The shortcut and container will begin working again. Give it another moment to finish. Eventually it will say something like "You are 0 in the queue." After which (give it another moment!) your app should launch automatically. 
 
 If that happens, congratulations. You are JITing.
 
@@ -309,8 +316,10 @@ You can also purchase your own Apple Developer Account ($99/year) and sideload u
 
 Or use the free developer account that every Apple Account has. You could sideload using something like SideStore, AltStore or (I haven't personally tried this one for JIT- mileage may vary) Sideloadly. This uses your personal, free developer certificate and thus allows you to access JIT on the sideloaded apps.
 
-My personal setup is: 
+My personal setup is:
+
 - a cheap distribution cert used for non-JIT apps.
+
 - SideStore for apps I want JIT for.
 
 But do whatever makes you happy. Just remember it's on Apple for any and all of these limitations. Or why we must use special tools to acquire JIT in the first place.

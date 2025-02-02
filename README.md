@@ -109,7 +109,7 @@ Alternative method:
 just docker-build
 just docker-run
 ```
-Detailed Step by Step Docker Compose [Guide](https://github.com/Unlearned6688/JitStreamer-EB/blob/master/jitstreamer-eb-debian-docker-instructions.md)
+Detailed Step by Step Docker Compose [Guide](https://github.com/jkcoxson/JitStreamer-EB/blob/master/jitstreamer-eb-debian-docker-instructions.md)
 
 ## License
 
