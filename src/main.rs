@@ -17,8 +17,8 @@ use axum::{
 use axum_client_ip::SecureClientIp;
 use heartbeat::NewHeartbeatSender;
 use idevice::{
-    installation_proxy::InstallationProxyClient, lockdownd::LockdowndClient, mounter::ImageMounter,
-    pairing_file::PairingFile, Idevice,
+    installation_proxy::InstallationProxyClient, mounter::ImageMounter, pairing_file::PairingFile,
+    provider::TcpProvider, IdeviceService,
 };
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -254,67 +254,25 @@ async fn get_apps(
 
     // Connect to the device and get the list of bundle IDs
     debug!("Connecting to device {udid} to get apps");
-    let socket = SocketAddr::new(ip, idevice::lockdownd::LOCKDOWND_PORT);
 
-    let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
-    let socket = Box::new(socket);
-    let idevice = Idevice::new(socket, "JitStreamer");
+    let provider = TcpProvider {
+        addr: ip,
+        pairing_file,
+        label: "JitStreamer-EB".to_string(),
+    };
 
-    let mut lockdown_client = LockdowndClient { idevice };
-    if let Err(e) = lockdown_client.start_session(&pairing_file).await {
-        info!("Failed to start session: {:?}", e);
-        return Json(GetAppsReturn {
-            ok: false,
-            apps: Vec::new(),
-            bundle_ids: None,
-            error: Some(format!("Failed to start session: {:?}", e)),
-        });
-    }
-
-    let port = match lockdown_client
-        .start_service("com.apple.mobile.installation_proxy")
-        .await
-    {
-        Ok(port) => port.0,
+    let mut instproxy_client = match InstallationProxyClient::connect(&provider).await {
+        Ok(i) => i,
         Err(e) => {
-            info!("Failed to start service: {:?}", e);
             return Json(GetAppsReturn {
                 ok: false,
                 apps: Vec::new(),
                 bundle_ids: None,
-                error: Some(format!("Failed to start service: {:?}", e)),
-            });
+                error: Some(format!("Failed to start instproxy: {e:?}")),
+            })
         }
     };
 
-    let socket = SocketAddr::new(ip, port);
-    let socket = match tokio::net::TcpStream::connect(socket).await {
-        Ok(socket) => socket,
-        Err(e) => {
-            info!("Failed to connect to installation_proxy: {:?}", e);
-            return Json(GetAppsReturn {
-                ok: false,
-                apps: Vec::new(),
-                bundle_ids: None,
-                error: Some(format!("Failed to connect to installation_proxy: {:?}", e)),
-            });
-        }
-    };
-    let socket = Box::new(socket);
-    let mut idevice = Idevice::new(socket, "JitStreamer");
-
-    if let Err(e) = idevice.start_session(&pairing_file).await {
-        info!("Failed to start session: {:?}", e);
-        return Json(GetAppsReturn {
-            ok: false,
-            apps: Vec::new(),
-            bundle_ids: None,
-            error: Some(format!("Failed to start session: {:?}", e)),
-        });
-    }
-
-    let mut instproxy_client = InstallationProxyClient::new(idevice);
-    let apps = match instproxy_client.get_apps(None, None).await {
     let apps = match instproxy_client
         .get_apps(Some("User".to_string()), None)
         .await
@@ -574,82 +532,25 @@ async fn launch_app(
     }
 
     // Get the list of mounted images
-    let socket = SocketAddr::new(ip, idevice::lockdownd::LOCKDOWND_PORT);
-    let socket = match tokio::net::TcpStream::connect(socket).await {
-        Ok(socket) => socket,
+    let provider = TcpProvider {
+        addr: ip,
+        pairing_file,
+        label: "JitStreamer-EB".to_string(),
+    };
+
+    let mut mounter_client = match ImageMounter::connect(&provider).await {
+        Ok(m) => m,
         Err(e) => {
-            info!("Failed to connect to lockdownd: {:?}", e);
             return Json(LaunchAppReturn {
                 ok: false,
                 launching: false,
                 mounting: false,
                 position: None,
-                error: Some(format!("Failed to connect to lockdownd: {:?}", e)),
-            });
+                error: Some(format!("Failed to start image mounter: {e:?}")),
+            })
         }
     };
 
-    let socket = Box::new(socket);
-    let idevice = Idevice::new(socket, "JitStreamer");
-
-    let mut lockdown_client = LockdowndClient { idevice };
-    if let Err(e) = lockdown_client.start_session(&pairing_file).await {
-        info!("Failed to start session: {:?}", e);
-        return Json(LaunchAppReturn {
-            ok: false,
-            launching: false,
-            mounting: false,
-            position: None,
-            error: Some(format!("Failed to start session: {:?}", e)),
-        });
-    }
-
-    let port = match lockdown_client
-        .start_service("com.apple.mobile.mobile_image_mounter")
-        .await
-    {
-        Ok(port) => port.0,
-        Err(e) => {
-            info!("Failed to start service: {:?}", e);
-            return Json(LaunchAppReturn {
-                ok: false,
-                launching: false,
-                mounting: false,
-                position: None,
-                error: Some(format!("Failed to start service: {:?}", e)),
-            });
-        }
-    };
-
-    let socket = SocketAddr::new(ip, port);
-    let socket = match tokio::net::TcpStream::connect(socket).await {
-        Ok(socket) => socket,
-        Err(e) => {
-            info!("Failed to connect to image_mounter: {:?}", e);
-            return Json(LaunchAppReturn {
-                ok: false,
-                launching: false,
-                mounting: false,
-                position: None,
-                error: Some(format!("Failed to connect to image_mounter: {:?}", e)),
-            });
-        }
-    };
-    let socket = Box::new(socket);
-    let mut idevice = Idevice::new(socket, "JitStreamer");
-
-    if let Err(e) = idevice.start_session(&pairing_file).await {
-        info!("Failed to start session: {:?}", e);
-        return Json(LaunchAppReturn {
-            ok: false,
-            launching: false,
-            mounting: false,
-            position: None,
-            error: Some(format!("Failed to start session: {:?}", e)),
-        });
-    }
-
-    let mut mounter_client = ImageMounter::new(idevice);
     let images = match mounter_client.copy_devices().await {
         Ok(images) => images,
         Err(e) => {

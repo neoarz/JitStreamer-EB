@@ -1,14 +1,11 @@
 // Jackson Coxson
 // Orchestrator for heartbeat threads
 
-use std::{
-    collections::HashMap,
-    net::{IpAddr, SocketAddr},
-};
+use std::{collections::HashMap, net::IpAddr};
 
 use idevice::{
-    heartbeat::HeartbeatClient, lockdownd::LockdowndClient, pairing_file::PairingFile, Idevice,
-    IdeviceError,
+    heartbeat::HeartbeatClient, pairing_file::PairingFile, provider::TcpProvider, IdeviceError,
+    IdeviceService,
 };
 use log::debug;
 use tokio::sync::oneshot::error::TryRecvError;
@@ -47,28 +44,13 @@ pub async fn heartbeat_thread(
     pairing_file: &PairingFile,
 ) -> Result<tokio::sync::oneshot::Sender<()>, IdeviceError> {
     debug!("Connecting to device {udid} to get apps");
-    let socket = SocketAddr::new(ip, idevice::lockdownd::LOCKDOWND_PORT);
+    let provider = TcpProvider {
+        addr: ip,
+        pairing_file: pairing_file.clone(),
+        label: "JitStreamer-EB".to_string(),
+    };
 
-    let socket = tokio::net::TcpStream::connect(socket).await?;
-    let socket = Box::new(socket);
-    let idevice = Idevice::new(socket, "JitStreamer");
-
-    let mut lockdown_client = LockdowndClient { idevice };
-    lockdown_client.start_session(pairing_file).await?;
-
-    let (port, _) = lockdown_client
-        .start_service("com.apple.mobile.heartbeat")
-        .await?;
-
-    let socket = SocketAddr::new(ip, port);
-    let socket = tokio::net::TcpStream::connect(socket).await?;
-
-    let socket = Box::new(socket);
-    let mut idevice = Idevice::new(socket, "JitStreamer");
-
-    idevice.start_session(pairing_file).await?;
-
-    let mut heartbeat_client = HeartbeatClient { idevice };
+    let mut heartbeat_client = HeartbeatClient::connect(&provider).await?;
 
     let (sender, mut receiver) = tokio::sync::oneshot::channel::<()>();
 
