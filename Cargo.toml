@@ -13,7 +13,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 env_logger = { version = "0.11" }
 log = { version = "0.4" }
-idevice = { version = "0.1.16", features = ["full"] }
+idevice = { version = "0.1.16", features = [
+  "heartbeat",
+  "image_mounter",
+  "tcp",
+] }
 plist = { version = "1.7" }
 sqlite = { version = "0.36" }
 wg-config = { git = "https://github.com/jkcoxson/wg-config" }
