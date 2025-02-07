@@ -323,6 +323,8 @@ struct LaunchAppReturn {
     launching: bool,
     position: Option<usize>,
     error: Option<String>,
+    mounting: bool, // NOTICE: this field does literally nothing and will be removed in future
+                    // versions
 }
 ///  - Get the IP from the request and UDID from the database
 /// - Make sure netmuxd still has the device
@@ -345,6 +347,7 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
                 error: Some(e),
                 launching: false,
                 position: None,
+                mounting: false,
             })
         }
     };
@@ -358,6 +361,7 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
                 launching: true,
                 position: Some(p),
                 error: None,
+                mounting: false,
             });
         }
         debug_server::LaunchQueueInfo::NotInQueue => {}
@@ -367,6 +371,7 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
                 launching: false,
                 position: None,
                 error: Some(e),
+                mounting: false,
             });
         }
         debug_server::LaunchQueueInfo::ServerError => {
@@ -375,6 +380,7 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
                 launching: false,
                 position: None,
                 error: Some("Failed to get launch status".to_string()),
+                mounting: false,
             });
         }
     }
@@ -386,12 +392,14 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
             launching: true,
             position: Some(position as usize),
             error: None,
+            mounting: false,
         }),
         None => Json(LaunchAppReturn {
             ok: false,
             launching: false,
             position: None,
             error: Some("Failed to add to queue".to_string()),
+            mounting: false,
         }),
     }
 }
@@ -402,6 +410,7 @@ struct StatusReturn {
     ok: bool,
     position: usize,
     error: Option<String>,
+    in_progress: bool, // NOTICE: this field is deprecated and will be removed in future versions
 }
 
 /// Gets the current status of the device
@@ -419,6 +428,7 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
                 done: true,
                 error: Some(e),
                 position: 0,
+                in_progress: false,
             })
         }
     };
@@ -435,6 +445,7 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
                     done: false,
                     position: p,
                     error: None,
+                    in_progress: false,
                 }));
             }
             debug_server::LaunchQueueInfo::NotInQueue => {}
@@ -444,6 +455,7 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
                     done: true,
                     position: 0,
                     error: Some(e),
+                    in_progress: false,
                 }));
             }
             debug_server::LaunchQueueInfo::ServerError => {
@@ -452,6 +464,7 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
                     done: true,
                     position: 0,
                     error: Some("server error".to_string()),
+                    in_progress: false,
                 }));
             }
         }
@@ -471,6 +484,7 @@ async fn status(ip: SecureClientIp) -> Json<StatusReturn> {
                         done: true,
                         position: 0,
                         error: None,
+                        in_progress: false,
                     });
                 }
             }

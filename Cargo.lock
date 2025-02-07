@@ -774,6 +774,8 @@ dependencies = [
 [[package]]
 name = "idevice"
 version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "438437530a8bd8ec5abc70607bef14fd23cb4c86bad7de7c9cba72e5fa2b740f"
 dependencies = [
  "env_logger",
  "log",
