@@ -106,7 +106,7 @@ async fn main() {
         app.route("/register", post(register::register))
     } else if allow_registration == 2 {
         app.route("/register", post(register::register))
-        .route("/upload", get(register::upload))
+            .route("/upload", get(register::upload))
     } else {
         app
     };
@@ -265,7 +265,7 @@ async fn get_apps(
             });
         }
     };
-    let apps: HashMap<String, String> = apps
+    let mut apps: HashMap<String, String> = apps
         .into_iter()
         .filter(|(_, app)| {
             // Filter out apps that don't have get-task-allow
@@ -304,6 +304,8 @@ async fn get_apps(
             error: Some("No apps with get-task-allow found".to_string()),
         });
     }
+
+    apps.insert("Other...".to_string(), "UPDATE YOUR SHORTCUT".to_string());
 
     state
         .new_heartbeat_sender
