@@ -1,12 +1,12 @@
 // Jackson Coxson
 
-use axum_client_ip::SecureClientIp;
-use std::net::{IpAddr, Ipv6Addr};
 use axum::{body::Bytes, http::StatusCode, response::Html};
+use axum_client_ip::SecureClientIp;
 use log::info;
 use plist::Dictionary;
 use sha2::Digest;
 use sqlite::State;
+use std::net::{IpAddr, Ipv6Addr};
 
 /// Check to make sure the Wireguard interface exists
 pub fn check_wireguard() {
@@ -47,7 +47,10 @@ pub fn check_wireguard() {
 }
 
 /// Takes the plist in bytes, and returns either the pairing file in return or an error message
-pub async fn register(client_ip: SecureClientIp, plist_bytes: Bytes) -> Result<Bytes, (StatusCode, &'static str)> {
+pub async fn register(
+    client_ip: SecureClientIp,
+    plist_bytes: Bytes,
+) -> Result<Bytes, (StatusCode, &'static str)> {
     let plist = match plist::from_bytes::<Dictionary>(plist_bytes.as_ref()) {
         Ok(plist) => plist,
         Err(_) => return Err((StatusCode::BAD_REQUEST, "bad plist")),
@@ -116,9 +119,9 @@ pub async fn register(client_ip: SecureClientIp, plist_bytes: Bytes) -> Result<B
     };
 
     let register_mode = std::env::var("ALLOW_REGISTRATION")
-    .unwrap_or("1".to_string())
-    .parse::<u8>()
-    .unwrap();
+        .unwrap_or("1".to_string())
+        .parse::<u8>()
+        .unwrap();
 
     let client_config: Vec<u8>;
     let ip_final: Ipv6Addr;
@@ -126,7 +129,7 @@ pub async fn register(client_ip: SecureClientIp, plist_bytes: Bytes) -> Result<B
     if register_mode == 1 {
         // register using wireguard
         let wireguard_config_name =
-        std::env::var("WIREGUARD_CONFIG_NAME").unwrap_or("jitstreamer".to_string());
+            std::env::var("WIREGUARD_CONFIG_NAME").unwrap_or("jitstreamer".to_string());
         let wireguard_conf = format!("/etc/wireguard/{wireguard_config_name}.conf");
         let wireguard_port = std::env::var("WIREGUARD_PORT")
             .unwrap_or("51869".to_string())
@@ -147,7 +150,8 @@ pub async fn register(client_ip: SecureClientIp, plist_bytes: Bytes) -> Result<B
                 if let wg_config::WgConfError::NotFound(_) = e {
                     // Generate a new one
 
-                    let key = wg_config::WgKey::generate_private_key().expect("failed to generate key");
+                    let key =
+                        wg_config::WgKey::generate_private_key().expect("failed to generate key");
                     let interface = wg_config::WgInterface::new(
                         key,
                         wireguard_server_address.parse().unwrap(),
@@ -183,7 +187,7 @@ pub async fn register(client_ip: SecureClientIp, plist_bytes: Bytes) -> Result<B
                         }
                         if peer_ip[0].to_string() == ip {
                             info!("Found peer with IP {}", ip);
-    
+
                             public_ip = Some(peer.public_key().to_owned());
                         }
                     }
@@ -194,11 +198,11 @@ pub async fn register(client_ip: SecureClientIp, plist_bytes: Bytes) -> Result<B
                 }
             }
         }
-    
+
         if let Some(public_ip) = public_ip {
             server_peer = server_peer.remove_peer_by_pub_key(&public_ip).unwrap();
         }
-    
+
         let ip = generate_ipv6_from_udid(udid.as_str());
         ip_final = ip;
         // Generate a new peer for the device
@@ -224,12 +228,30 @@ pub async fn register(client_ip: SecureClientIp, plist_bytes: Bytes) -> Result<B
         };
         client_config = ip_final.to_string().as_bytes().to_vec();
     } else {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Unknown registration mode"));
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unknown registration mode",
+        ));
     }
 
     // Save the plist to the storage
+    let plist_storage_path = std::env::var("PLIST_STORAGE").unwrap_or(
+        match std::env::consts::OS {
+            "macos" => "/var/db/lockdown",
+            "linux" => "/var/lib/lockdown",
+            "windows" => "C:/ProgramData/Apple/Lockdown",
+            _ => panic!("Unsupported OS, specify a path"),
+        }
+        .to_string(),
+    );
+
+    // Create the folder if it doesn't exist
+    if let Err(e) = tokio::fs::create_dir_all(&plist_storage_path).await {
+        log::error!("Failed to create plist storage path: {e:?}");
+    }
+
     tokio::fs::write(
-        format!("/var/lib/lockdown/{udid}.plist"),
+        format!("{plist_storage_path}/{udid}.plist"),
         &plist_bytes.to_vec(),
     )
     .await
@@ -268,7 +290,6 @@ pub async fn register(client_ip: SecureClientIp, plist_bytes: Bytes) -> Result<B
     if register_mode == 1 {
         refresh_wireguard();
     }
-
 
     Ok(client_config.into())
 }
