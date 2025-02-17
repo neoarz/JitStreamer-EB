@@ -17,7 +17,7 @@ WORKDIR /app
 # Clone and build netmuxd
 RUN git clone https://github.com/jkcoxson/netmuxd.git && \
     cd netmuxd && \
-    git reset --hard 7fc799e178567aedd90875ffc7714a42ebe67990 && \
+    git reset --hard 6b4941dbed8fac38c67db031be0309717ff6b4e3 && \
     cargo build --release && \
     cd ..
 
