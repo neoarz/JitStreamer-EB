@@ -56,8 +56,7 @@ async fn main() {
         .unwrap_or("9172".to_string())
         .parse::<u16>()
         .unwrap();
-    let pairing_file_storage =
-        std::env::var("PAIRING_FILE_STORAGE").unwrap_or("/var/lib/lockdown".to_string());
+    let pairing_file_storage = std::env::var("PLIST_STORAGE").unwrap_or("/var/lib/lockdown".to_string());
 
     env_logger::init();
     info!("Logger initialized");
