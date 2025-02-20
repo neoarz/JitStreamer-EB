@@ -143,6 +143,7 @@ pub async fn register(
             std::env::var("WIREGUARD_SERVER_ALLOWED_IPS").unwrap_or("fd00::/64".to_string());
 
         // Read the Wireguard config file
+        info!("Reading Wireguard server config");
         let mut server_peer = match wg_config::WgConf::open(&wireguard_conf) {
             Ok(conf) => conf,
             Err(e) => {
@@ -200,12 +201,16 @@ pub async fn register(
         }
 
         if let Some(public_ip) = public_ip {
+            info!("Removing existing peer");
             server_peer = server_peer.remove_peer_by_pub_key(&public_ip).unwrap();
         }
 
+        info!("Generating IPv6 from UDID");
         let ip = generate_ipv6_from_udid(udid.as_str());
         ip_final = ip;
+
         // Generate a new peer for the device
+        info!("Generating peer");
         client_config = match server_peer.generate_peer(
             std::net::IpAddr::V6(ip),
             wireguard_endpoint.parse().unwrap(),
@@ -288,7 +293,7 @@ pub async fn register(
     });
 
     if register_mode == 1 {
-        refresh_wireguard();
+        refresh_wireguard(ip_final.to_string());
     }
 
     Ok(client_config.into())
@@ -324,7 +329,7 @@ fn generate_ipv6_from_udid(udid: &str) -> std::net::Ipv6Addr {
     std::net::Ipv6Addr::from(segments)
 }
 
-fn refresh_wireguard() {
+fn refresh_wireguard(ip: String) {
     let wireguard_config_name =
         std::env::var("WIREGUARD_CONFIG_NAME").unwrap_or("jitstreamer".to_string());
 
@@ -336,6 +341,13 @@ fn refresh_wireguard() {
         ))
         .output()
         .expect("failed to execute process");
-
     info!("Refreshing Wireguard: {:?}", output);
+
+    // ip route add fd00::b36d:f867:9391:fb0a dev jitstreamer
+    let output = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(format!("ip route add {ip} dev {wireguard_config_name}"))
+        .output()
+        .expect("failed to add IP route");
+    info!("Adding route: {:?}", output);
 }
