@@ -2,9 +2,10 @@
 
 ## Building
 Clone and build the following repositories:
-- [netmuxd](https://github.com/jkcoxson/netmuxd)
-- [tunneld-rs](https://github.com/jkcoxson/tunneld-rs)
-- [JitStreamer-EB](https://github.com/jkcoxson/JitStreamer-EB)
+
+[netmuxd](https://github.com/jkcoxson/netmuxd)
+[tunneld-rs](https://github.com/jkcoxson/tunneld-rs)
+[JitStreamer-EB](https://github.com/jkcoxson/JitStreamer-EB)
 
 ```bash
 # Clone repositories
@@ -31,7 +32,7 @@ pip3 install requests aiosqlite pymobiledevice3
 Download the [runners](../src/runners) folder to your folder
 
 ## Running Services
-Run the following commands in separate terminals:
+Run the following commands in 3 separate terminals:
 
 1. Tunneld:
 ```bash
