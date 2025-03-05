@@ -1,7 +1,7 @@
 # Usage on MacOS
 
 ## Building
-Clone the following repositories:
+Clone and build the following repositories:
 - [netmuxd](https://github.com/jkcoxson/netmuxd)
 - [tunneld-rs](https://github.com/jkcoxson/tunneld-rs)
 - [JitStreamer-EB](https://github.com/jkcoxson/JitStreamer-EB)
@@ -18,7 +18,7 @@ cd ../tunneld-rs && cargo build --release
 cd ../JitStreamer-EB && cargo build --release
 ```
 
-## Preparing Environment
+## Usage
 If you have a weird Python and brew dumpster fire like I do, create a venv
 and install the dependencies:
 
