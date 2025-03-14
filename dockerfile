@@ -48,8 +48,6 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /app/target/release/jitstreamer-eb /usr/local/bin/jitstreamer-eb
 COPY --from=builder /app/netmuxd/target/release/netmuxd /usr/local/bin/netmuxd
 COPY --from=builder /app/tunneld-rs/target/release/tunneld-rs /usr/local/bin/tunneld-rs
-COPY --from=builder /app/requirements.txt /app/requirements.txt
-COPY --from=builder /app/src/runners /app/src/runners
 
 # Set the default working directory
 WORKDIR /app
