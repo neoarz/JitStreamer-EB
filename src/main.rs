@@ -5,7 +5,7 @@ const VERSION: [u8; 3] = [0, 2, 0];
 
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::{IpAddr, SocketAddr},
     str::FromStr,
 };
 
@@ -19,8 +19,8 @@ use axum_client_ip::SecureClientIp;
 use common::get_pairing_file;
 use heartbeat::NewHeartbeatSender;
 use idevice::{
-    debug_proxy::DebugProxyClient, installation_proxy::InstallationProxyClient,
-    provider::TcpProvider, tunneld, IdeviceService,
+    core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient,
+    installation_proxy::InstallationProxyClient, provider::TcpProvider, IdeviceService,
 };
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,6 @@ mod common;
 mod db;
 mod heartbeat;
 mod mount;
-mod netmuxd;
 mod raw_packet;
 mod register;
 
@@ -334,7 +333,11 @@ struct LaunchAppReturn {
 ///  - Connect to tunneld and get the interface and port for the developer service
 ///  - Send the commands to launch the app and detach
 ///  - Set last_used to now in the database
-async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<LaunchAppReturn> {
+async fn launch_app(
+    ip: SecureClientIp,
+    Path(bundle_id): Path<String>,
+    State(state): State<JitStreamerState>,
+) -> Json<LaunchAppReturn> {
     let ip = ip.0;
 
     info!("Got request to launch {bundle_id} from {:?}", ip);
@@ -352,98 +355,101 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
         }
     };
 
-    info!("Adding {udid} to netmuxd");
-    if !netmuxd::add_device(ip, &udid).await {
+    // Get the pairing file
+    debug!("Getting pairing file for {udid}");
+    let pairing_file = match get_pairing_file(&udid, &state.pairing_file_storage).await {
+        Ok(pairing_file) => pairing_file,
+        Err(e) => {
+            info!("Failed to get pairing file: {:?}", e);
+            return Json(LaunchAppReturn {
+                ok: false,
+                launching: false,
+                position: None,
+                mounting: false,
+                error: Some(format!("Failed to get pairing file: {:?}", e)),
+            });
+        }
+    };
+
+    // Heartbeat the device
+    match heartbeat::heartbeat_thread(udid.clone(), ip, &pairing_file).await {
+        Ok(s) => {
+            state
+                .new_heartbeat_sender
+                .send(heartbeat::SendRequest::Store((udid.clone(), s)))
+                .await
+                .unwrap();
+        }
+        Err(e) => {
+            let e = match e {
+                idevice::IdeviceError::InvalidHostID => {
+                    "your pairing file is invalid. Regenerate it with jitterbug pair.".to_string()
+                }
+                _ => e.to_string(),
+            };
+            info!("Failed to heartbeat device: {:?}", e);
+            return Json(LaunchAppReturn {
+                ok: false,
+                launching: false,
+                position: None,
+                mounting: false,
+                error: Some(format!("Failed to heartbeat device: {e}")),
+            });
+        }
+    }
+
+    let provider = TcpProvider {
+        addr: ip,
+        pairing_file,
+        label: "JitStreamer-EB".to_string(),
+    };
+
+    let proxy = match CoreDeviceProxy::connect(&provider).await {
+        Ok(p) => p,
+        Err(e) => {
+            info!("Failed to proxy device: {:?}", e);
+            return Json(LaunchAppReturn {
+                ok: false,
+                launching: false,
+                position: None,
+                mounting: false,
+                error: Some(format!("Failed to start core device proxy: {e}")),
+            });
+        }
+    };
+    let rsd_port = proxy.handshake.server_rsd_port;
+    let mut adapter = match proxy.create_software_tunnel() {
+        Ok(a) => a,
+        Err(e) => {
+            info!("Failed to create software tunnel: {:?}", e);
+            return Json(LaunchAppReturn {
+                ok: false,
+                launching: false,
+                position: None,
+                mounting: false,
+                error: Some(format!("Failed to create software tunnel: {e}")),
+            });
+        }
+    };
+
+    if let Err(e) = adapter.connect(rsd_port).await {
+        info!("Failed to connect to RemoteXPC port: {:?}", e);
         return Json(LaunchAppReturn {
             ok: false,
-            error: Some("Unable to add device to netmuxd".to_string()),
             launching: false,
             position: None,
             mounting: false,
+            error: Some(format!("Failed to connect to RemoteXPC port: {e}")),
         });
     }
 
-    let mut tun_dev = None;
-    for _ in 0..100 {
-        let mut devs = match idevice::tunneld::get_tunneld_devices(SocketAddr::V4(
-            SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), tunneld::DEFAULT_PORT),
-        ))
-        .await
-        {
-            Ok(d) => d,
-            Err(e) => {
-                log::error!("Failed to get devs from tunneld! {e:?}");
-                return Json(LaunchAppReturn {
-                    ok: false,
-                    error: Some("Failed to get devices from tunneld".to_string()),
-                    launching: false,
-                    position: None,
-                    mounting: false,
-                });
-            }
-        };
-
-        if let Some(dev) = devs.remove(&udid) {
-            tun_dev = Some(dev);
-            break;
-        }
-
-        // about 10 seconds in total
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-
-    let tun_dev = match tun_dev {
-        Some(t) => t,
-        None => {
-            log::error!("tunneld didn't have the device in time");
-            return Json(LaunchAppReturn {
-                ok: false,
-                error: Some("tunneld didn't contain your device".to_string()),
-                launching: false,
-                position: None,
-                mounting: false,
-            });
-        }
-    };
-
-    let tunnel_address = match IpAddr::from_str(&tun_dev.tunnel_address) {
-        Ok(t) => t,
-        Err(e) => {
-            log::error!("Failed to parse tunneld device IP address: {e:?}");
-            return Json(LaunchAppReturn {
-                ok: false,
-                error: Some("tunneld contained bad IP string".to_string()),
-                launching: false,
-                position: None,
-                mounting: false,
-            });
-        }
-    };
-
-    let xpc_conn =
-        match tokio::net::TcpStream::connect(SocketAddr::new(tunnel_address, tun_dev.tunnel_port))
-            .await
-        {
-            Ok(x) => x,
-            Err(e) => {
-                log::warn!("Failed to connect to RemoteXCP port: {e:?}");
-                return Json(LaunchAppReturn {
-                    ok: false,
-                    error: Some("Failed to connect to RemoteXCP port".to_string()),
-                    launching: false,
-                    position: None,
-                    mounting: false,
-                });
-            }
-        };
-
-    let xpc_client = match idevice::xpc::XPCDevice::new(Box::new(xpc_conn)).await {
+    let xpc_client = match idevice::xpc::XPCDevice::new(adapter).await {
         Ok(x) => x,
         Err(e) => {
-            log::warn!("Failed to connect to RemoteXCP: {e:?}");
+            log::warn!("Failed to connect to RemoteXPC: {e:?}");
             return Json(LaunchAppReturn {
                 ok: false,
-                error: Some("Failed to connect to RemoteXCP".to_string()),
+                error: Some("Failed to connect to RemoteXPC".to_string()),
                 launching: false,
                 position: None,
                 mounting: false,
@@ -451,8 +457,8 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
         }
     };
 
-    let service = match xpc_client.services.get(idevice::dvt::SERVICE_NAME) {
-        Some(s) => s,
+    let dvt_port = match xpc_client.services.get(idevice::dvt::SERVICE_NAME) {
+        Some(s) => s.port,
         None => {
             return Json(LaunchAppReturn {
                 ok: false,
@@ -465,24 +471,47 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
             });
         }
     };
+    let debug_proxy_port = match xpc_client.services.get(idevice::debug_proxy::SERVICE_NAME) {
+        Some(s) => s.port,
+        None => {
+            return Json(LaunchAppReturn {
+                ok: false,
+                error: Some(
+                    "Device did not contain debug server service. Is the image mounted?"
+                        .to_string(),
+                ),
+                launching: false,
+                position: None,
+                mounting: false,
+            });
+        }
+    };
 
-    let stream =
-        match tokio::net::TcpStream::connect(SocketAddr::new(tunnel_address, service.port)).await {
-            Ok(x) => x,
-            Err(e) => {
-                log::warn!("Failed to connect to DVT port: {e:?}");
-                return Json(LaunchAppReturn {
-                    ok: false,
-                    error: Some("Failed to connect to DVT port".to_string()),
-                    launching: false,
-                    position: None,
-                    mounting: false,
-                });
-            }
-        };
+    let mut adapter = xpc_client.into_inner();
+    if let Err(e) = adapter.close().await {
+        log::warn!("Failed to close RemoteXPC port: {e:?}");
+        return Json(LaunchAppReturn {
+            ok: false,
+            error: Some("Failed to close RemoteXPC port".to_string()),
+            launching: false,
+            position: None,
+            mounting: false,
+        });
+    }
 
-    let mut rs_client = match idevice::dvt::remote_server::RemoteServerClient::new(Box::new(stream))
-    {
+    info!("Connecting to DVT port");
+    if let Err(e) = adapter.connect(dvt_port).await {
+        log::warn!("Failed to connect to DVT port: {e:?}");
+        return Json(LaunchAppReturn {
+            ok: false,
+            error: Some("Failed to connect to DVT port".to_string()),
+            launching: false,
+            position: None,
+            mounting: false,
+        });
+    }
+
+    let mut rs_client = match idevice::dvt::remote_server::RemoteServerClient::new(adapter) {
         Ok(r) => r,
         Err(e) => {
             log::warn!("Failed to create remote server client: {e:?}");
@@ -544,39 +573,38 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
         log::warn!("Failed to disable memory limit: {e:?}")
     }
 
-    let service = match xpc_client.services.get(idevice::debug_proxy::SERVICE_NAME) {
-        Some(s) => s,
-        None => {
-            return Json(LaunchAppReturn {
-                ok: false,
-                error: Some(
-                    "Device did not contain debug server service. Is the image mounted?"
-                        .to_string(),
-                ),
-                launching: false,
-                position: None,
-                mounting: false,
-            });
-        }
-    };
+    let mut adapter = rs_client.into_inner();
+    if let Err(e) = adapter.close().await {
+        log::warn!("Failed to close DVT port: {e:?}");
+        return Json(LaunchAppReturn {
+            ok: false,
+            error: Some("Failed to close RemoteXPC port".to_string()),
+            launching: false,
+            position: None,
+            mounting: false,
+        });
+    }
 
-    let stream =
-        match tokio::net::TcpStream::connect(SocketAddr::new(tunnel_address, service.port)).await {
-            Ok(s) => s,
-            Err(e) => {
-                log::warn!("Failed to connect to debug server port: {e:?}");
-                return Json(LaunchAppReturn {
-                    ok: false,
-                    error: Some("Failed to connect to debug server port".to_string()),
-                    launching: false,
-                    position: None,
-                    mounting: false,
-                });
-            }
-        };
+    info!("Connecting to debug proxy port: {debug_proxy_port}");
+    if let Err(e) = adapter.connect(debug_proxy_port).await {
+        log::warn!("Failed to connect to debug proxy port: {e:?}");
+        return Json(LaunchAppReturn {
+            ok: false,
+            error: Some("Failed to connect to debug proxy port".to_string()),
+            launching: false,
+            position: None,
+            mounting: false,
+        });
+    }
 
-    let mut dp = DebugProxyClient::new(Box::new(stream));
-    let commands = [format!("vAttach;{pid:02X}"), "D".to_string()];
+    let mut dp = DebugProxyClient::new(adapter);
+    let commands = [
+        format!("vAttach;{pid:02X}"),
+        "D".to_string(),
+        "D".to_string(),
+        "D".to_string(),
+        "D".to_string(),
+    ];
     for command in commands {
         match dp.send_command(command.into()).await {
             Ok(res) => {
@@ -595,7 +623,12 @@ async fn launch_app(ip: SecureClientIp, Path(bundle_id): Path<String>) -> Json<L
         }
     }
 
-    netmuxd::remove_device(&udid).await;
+    debug!("JIT finished, killing heartbeat");
+    state
+        .new_heartbeat_sender
+        .send(heartbeat::SendRequest::Kill(udid.clone()))
+        .await
+        .unwrap();
 
     Json(LaunchAppReturn {
         ok: true,
@@ -622,7 +655,11 @@ impl AttachReturn {
     }
 }
 
-async fn attach_app(ip: SecureClientIp, Path(pid): Path<u16>) -> Json<AttachReturn> {
+async fn attach_app(
+    ip: SecureClientIp,
+    Path(pid): Path<u16>,
+    State(state): State<JitStreamerState>,
+) -> Json<AttachReturn> {
     let ip = ip.0;
 
     info!("Got request to attach {pid} from {:?}", ip);
@@ -632,83 +669,86 @@ async fn attach_app(ip: SecureClientIp, Path(pid): Path<u16>) -> Json<AttachRetu
         Err(e) => return Json(AttachReturn::fail(e)),
     };
 
-    info!("Adding {udid} to netmuxd");
-    if !netmuxd::add_device(ip, &udid).await {
-        return Json(AttachReturn::fail(
-            "Unable to add device to netmuxd".to_string(),
-        ));
-    }
-
-    let mut tun_dev = None;
-    for _ in 0..100 {
-        let mut devs = match idevice::tunneld::get_tunneld_devices(SocketAddr::V4(
-            SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), tunneld::DEFAULT_PORT),
-        ))
-        .await
-        {
-            Ok(d) => d,
-            Err(e) => {
-                log::error!("Failed to get devs from tunneld! {e:?}");
-                return Json(AttachReturn::fail(
-                    "Failed to get devices from tunneld".to_string(),
-                ));
-            }
-        };
-
-        if let Some(dev) = devs.remove(&udid) {
-            tun_dev = Some(dev);
-            break;
-        }
-
-        // about 10 seconds in total
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-
-    let tun_dev = match tun_dev {
-        Some(t) => t,
-        None => {
-            log::error!("tunneld didn't have the device in time");
-            return Json(AttachReturn::fail(
-                "tunneld didn't contain your device".to_string(),
-            ));
-        }
-    };
-
-    let tunnel_address = match IpAddr::from_str(&tun_dev.tunnel_address) {
-        Ok(t) => t,
+    // Get the pairing file
+    debug!("Getting pairing file for {udid}");
+    let pairing_file = match get_pairing_file(&udid, &state.pairing_file_storage).await {
+        Ok(pairing_file) => pairing_file,
         Err(e) => {
-            log::error!("Failed to parse tunneld device IP address: {e:?}");
-            return Json(AttachReturn::fail(
-                "tunneld contained bad IP string".to_string(),
-            ));
+            info!("Failed to get pairing file: {:?}", e);
+            return Json(AttachReturn::fail(format!(
+                "Failed to get pairing file: {:?}",
+                e
+            )));
         }
     };
 
-    let xpc_conn =
-        match tokio::net::TcpStream::connect(SocketAddr::new(tunnel_address, tun_dev.tunnel_port))
-            .await
-        {
-            Ok(x) => x,
-            Err(e) => {
-                log::warn!("Failed to connect to RemoteXCP port: {e:?}");
-                return Json(AttachReturn::fail(
-                    "Failed to connect to RemoteXCP port".to_string(),
-                ));
-            }
-        };
+    // Heartbeat the device
+    match heartbeat::heartbeat_thread(udid.clone(), ip, &pairing_file).await {
+        Ok(s) => {
+            state
+                .new_heartbeat_sender
+                .send(heartbeat::SendRequest::Store((udid.clone(), s)))
+                .await
+                .unwrap();
+        }
+        Err(e) => {
+            let e = match e {
+                idevice::IdeviceError::InvalidHostID => {
+                    "your pairing file is invalid. Regenerate it with jitterbug pair.".to_string()
+                }
+                _ => e.to_string(),
+            };
+            info!("Failed to heartbeat device: {:?}", e);
+            return Json(AttachReturn::fail(format!(
+                "Failed to heartbeat device: {e}"
+            )));
+        }
+    }
 
-    let xpc_client = match idevice::xpc::XPCDevice::new(Box::new(xpc_conn)).await {
+    let provider = TcpProvider {
+        addr: ip,
+        pairing_file,
+        label: "JitStreamer-EB".to_string(),
+    };
+
+    let proxy = match CoreDeviceProxy::connect(&provider).await {
+        Ok(p) => p,
+        Err(e) => {
+            info!("Failed to proxy device: {:?}", e);
+            return Json(AttachReturn::fail(format!(
+                "Failed to start core device proxy: {e}"
+            )));
+        }
+    };
+    let rsd_port = proxy.handshake.server_rsd_port;
+    let mut adapter = match proxy.create_software_tunnel() {
+        Ok(a) => a,
+        Err(e) => {
+            info!("Failed to create software tunnel: {:?}", e);
+            return Json(AttachReturn::fail(format!(
+                "Failed to create software tunnel: {e}"
+            )));
+        }
+    };
+    if let Err(e) = adapter.connect(rsd_port).await {
+        info!("Failed to connect to RemoteXPC port: {:?}", e);
+        return Json(AttachReturn::fail(format!(
+            "Failed to connect to RemoteXPC port: {e}"
+        )));
+    }
+
+    let xpc_client = match idevice::xpc::XPCDevice::new(adapter).await {
         Ok(x) => x,
         Err(e) => {
-            log::warn!("Failed to connect to RemoteXCP: {e:?}");
+            log::warn!("Failed to connect to RemoteXPC: {e:?}");
             return Json(AttachReturn::fail(
-                "Failed to connect to RemoteXCP".to_string(),
+                "Failed to connect to RemoteXPC".to_string(),
             ));
         }
     };
 
-    let service = match xpc_client.services.get(idevice::debug_proxy::SERVICE_NAME) {
-        Some(s) => s,
+    let service_port = match xpc_client.services.get(idevice::debug_proxy::SERVICE_NAME) {
+        Some(s) => s.port,
         None => {
             return Json(AttachReturn::fail(
                 "Device did not contain debug server service. Is the image mounted?".to_string(),
@@ -716,18 +756,21 @@ async fn attach_app(ip: SecureClientIp, Path(pid): Path<u16>) -> Json<AttachRetu
         }
     };
 
-    let stream =
-        match tokio::net::TcpStream::connect(SocketAddr::new(tunnel_address, service.port)).await {
-            Ok(s) => s,
-            Err(e) => {
-                log::warn!("Failed to connect to debug server port: {e:?}");
-                return Json(AttachReturn::fail(
-                    "Failed to connect to debug server port".to_string(),
-                ));
-            }
-        };
+    let mut adapter = xpc_client.into_inner();
+    if let Err(e) = adapter.close().await {
+        log::warn!("Failed to close RemoteXPC port: {e:?}");
+        return Json(AttachReturn::fail(format!(
+            "Failed to close RemoteXPC port: {e:?}"
+        )));
+    }
+    if let Err(e) = adapter.connect(service_port).await {
+        log::warn!("Failed to connect to debug proxy port: {e:?}");
+        return Json(AttachReturn::fail(format!(
+            "Failed to connect to debug proxy port: {e:?}"
+        )));
+    }
 
-    let mut dp = DebugProxyClient::new(Box::new(stream));
+    let mut dp = DebugProxyClient::new(adapter);
     let commands = [format!("vAttach;{pid:02X}"), "D".to_string()];
     for command in commands {
         match dp.send_command(command.into()).await {
@@ -743,7 +786,11 @@ async fn attach_app(ip: SecureClientIp, Path(pid): Path<u16>) -> Json<AttachRetu
         }
     }
 
-    netmuxd::remove_device(&udid).await;
+    state
+        .new_heartbeat_sender
+        .send(heartbeat::SendRequest::Kill(udid.clone()))
+        .await
+        .unwrap();
 
     Json(AttachReturn {
         success: true,
